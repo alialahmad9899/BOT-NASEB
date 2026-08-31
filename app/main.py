@@ -32,6 +32,7 @@ from app.handlers.admin import (
 from app.handlers.client import PAYMENT_TX, SEARCH_TEXT as CLIENT_SEARCH_TEXT, client_callback, client_text
 from app.handlers.start import start_command
 from app.services.ai import AIService
+from app.services.runtime import user_message_for_error
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -111,8 +112,18 @@ async def cancel_command(update: Any, context: Any) -> int:
 
 
 async def application_error(update: object, context: Any) -> None:
-    error_type = type(context.error).__name__ if context.error else "UnknownError"
+    error = context.error
+    error_type = type(error).__name__ if error else "UnknownError"
     logger.error("Unhandled application error: %s", error_type)
+
+    message = getattr(update, "effective_message", None)
+    if message is None:
+        return
+
+    try:
+        await message.reply_text(user_message_for_error(error))
+    except Exception:
+        logger.error("Failed to send user-facing error message: ReplyError")
 
 
 async def _health(_: Request) -> PlainTextResponse:
