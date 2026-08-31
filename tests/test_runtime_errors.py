@@ -7,6 +7,13 @@ def test_database_not_configured_error_has_user_facing_message():
     assert "غير مهيأة" in message
 
 
+def test_legacy_database_runtime_error_has_same_user_facing_message():
+    error = RuntimeError("قاعدة البيانات غير مهيأة")
+    message = user_message_for_error(error)
+    assert "قاعدة البيانات" in message
+    assert "غير مهيأة" in message
+
+
 def test_unexpected_error_gets_safe_generic_message():
     message = user_message_for_error(RuntimeError("secret internal detail"))
     assert "secret internal detail" not in message
