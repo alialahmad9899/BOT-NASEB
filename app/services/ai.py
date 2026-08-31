@@ -9,6 +9,10 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class AIExtractionError(RuntimeError):
+    """Raised when configured Gemini extraction cannot be completed."""
+
+
 class ProfileExtraction(BaseModel):
     model_config = ConfigDict(extra="ignore")
     gender: str | None = Field(default=None, description="male or female")
@@ -40,12 +44,21 @@ class SearchFilterExtraction(BaseModel):
 
 
 PROFILE_SCHEMA_INSTRUCTIONS = """
-استخرج البيانات من النص السوري العامي دون اختلاق أي معلومة.
-القيم غير الموجودة يجب أن تبقى null. الجنس يجب أن يكون male أو female إذا كان واضحاً.
-الهاتف وTelegram وWhatsApp بيانات سرية وتُنقل فقط إلى الحقول الخاصة بها.
-لا تحوّل المواصفات غير الواضحة إلى أرقام أو حقائق.
-إذا وردت صيغة مثل «عمري 20» أو «عمرها 24» أو «عمره 30» فهي عمر صاحب/صاحبة الإعلان نفسه، وليست عمر الشريك المطلوب.
-العبارات الوصفية مثل «بنت من سوريا» أو «شاب من دمشق» ليست اسماً، إلا إذا ظهر اسم شخص فعلي بشكل واضح.
+أنت مسؤول عن تحويل إعلان زواج سوري خام إلى بيانات منظمة قابلة للحفظ.
+
+قواعد صارمة:
+- استخرج المعلومات الموجودة فعلياً في النص فقط، ولا تخترع أي قيمة.
+- إذا كانت القيمة غير موجودة أو غير مؤكدة، أعدها null.
+- الاسم هو اسم الشخص نفسه فقط. إذا وردت صيغة مثل «اسمي آية» أو «الاسم: آية» فالقيمة تكون «آية» فقط، وليس العبارة كاملة.
+- العمر يجب فهمه من صيغ سورية شائعة مثل «عمري 25»، «عمري: 25»، «العمر 25»، «25 سنة».
+- المحافظة تعني محافظة سورية محددة مثل دمشق أو حلب أو ريف دمشق. كلمة «سوريا» وحدها لا تعني محافظة ولا يجوز تحويلها إلى محافظة.
+- المدينة تستخرج فقط إذا ذُكرت بوضوح.
+- لا تستنتج جنس صاحب الإعلان من مواصفات الشريك. مثلاً «بدي شب» تعني أن الشريك المطلوب ذكر، ولا تثبت أن صاحب الإعلان أنثى.
+- افهم الأخطاء الإملائية واللهجة السورية الشائعة بحذر، لكن لا تحوّل الكلام غير الواضح إلى حقيقة.
+- «بدي شب...»، «بدي شاب...»، «بدها شاب...»، «مواصفات الشريك...» تعني مواصفات الشريك المطلوب وتوضع في partner_requirements.
+- الهاتف وTelegram وWhatsApp بيانات سرية وتُنقل فقط إلى الحقول الخاصة بها.
+- لا تضع أرقام التواصل داخل description أو partner_requirements إذا كان الرقم مجرد وسيلة تواصل.
+- النص الأصلي هو المصدر الوحيد للحقيقة.
 """
 
 
@@ -156,6 +169,24 @@ class AIService:
     async def extract_profile(self, raw_text: str) -> ProfileExtraction:
         return await asyncio.to_thread(self.extract_profile_sync, raw_text)
 
+    @staticmethod
+    async def resolve_profile_extraction(
+        ai_service: "AIService",
+        raw_text: str,
+        deterministic_extraction: ProfileExtraction,
+    ) -> ProfileExtraction:
+        """Use configured Gemini as the primary parser; never silently fallback on AI failure."""
+        if not ai_service.is_configured:
+            raise AIExtractionError("Gemini is not configured")
+        try:
+            ai_extraction = await ai_service.extract_profile(raw_text)
+        except Exception as exc:
+            raise AIExtractionError(f"Gemini extraction failed: {type(exc).__name__}") from exc
+
+        return normalize_profile_extraction(
+            merge_private_contacts(ai_extraction, deterministic_extraction)
+        )
+
     def parse_search_filters_sync(self, raw_text: str) -> SearchFilterExtraction:
         client = self._get_client()
         from google.genai import types
@@ -180,10 +211,7 @@ class AIService:
 
 
 def basic_profile_extraction(raw_text: str, photo_file_id: str | None = None) -> ProfileExtraction:
-    """Conservative local fallback for environments where AI is unavailable.
-
-    It extracts only values explicitly present in the raw text; unknown fields remain null.
-    """
+    """Conservative local extraction for explicit-fact supplement and privacy validation."""
     from app.services.profiles import normalize_digits
 
     normalized = normalize_digits(raw_text.replace("،", " ")).strip()
@@ -256,28 +284,36 @@ def basic_profile_extraction(raw_text: str, photo_file_id: str | None = None) ->
     if occupation_match:
         occupation = occupation_match.group(1).strip()
 
+    name = None
+    explicit_name_match = re.search(r"(?:اسمي|الاسم)\s*[:=-]?\s*([^\n،,]+)", normalized)
+    if explicit_name_match:
+        candidate = explicit_name_match.group(1).strip()
+        candidate = re.split(r"\s+(?:عمري|من|ساكن|ساكنة)\b", candidate, maxsplit=1)[0].strip()
+        if candidate:
+            name = candidate
+
     known = set(province_names) | {
         "أنثى", "انثى", "بنت", "عروس", "ذكر", "شاب", "عريس", "عزباء", "عازبة",
         "عازب", "متزوجة", "متزوج", "مطلقة", "مطلق", "أرملة", "أرمل", "مدرسة",
         "مدرس", "مهندس", "طبيب", "ممرض", "موظف", "موظفة", "محامي", "محامية",
         "تاجر", "متعهد", "ربة منزل",
     }
-    name = None
-    province_index_for_name = next((i for i, line in enumerate(lines) if province and province in line), len(lines))
-    for line in lines[:province_index_for_name]:
-        if re.fullmatch(r"[0-9+\- xX]+", line):
-            continue
-        if line == province or line in known:
-            continue
-        if "سنة" in line or "عام" in line or "عمر" in line or "طول" in line or "وزن" in line:
-            continue
-        if re.search(r"(?:الهاتف|الواتساب|واتساب|telegram|تلغرام|تيليجرام|رقمي)", line, re.I):
-            continue
-        if any(token in line for token in ("بنت", "شاب", "عروس", "عريس", "فتاة", "رجل", "امرأة")):
-            continue
-        if len(line) <= 60 and not any(token in line for token in ("بدها", "بدي", "المواصفات", "المطلوب", "يرغب", "تفضل")):
-            name = line
-            break
+    if name is None:
+        province_index_for_name = next((i for i, line in enumerate(lines) if province and province in line), len(lines))
+        for line in lines[:province_index_for_name]:
+            if re.fullmatch(r"[0-9+\- xX]+", line):
+                continue
+            if line == province or line in known:
+                continue
+            if "سنة" in line or "عام" in line or "عمر" in line or "طول" in line or "وزن" in line:
+                continue
+            if re.search(r"(?:الهاتف|الواتساب|واتساب|telegram|تلغرام|تيليجرام|رقمي)", line, re.I):
+                continue
+            if any(token in line for token in ("بنت", "شاب", "عروس", "عريس", "فتاة", "رجل", "امرأة")):
+                continue
+            if len(line) <= 60 and not any(token in line for token in ("بدها", "بدي", "المواصفات", "المطلوب", "يرغب", "تفضل")):
+                name = line
+                break
 
     city = None
     if province:
@@ -291,7 +327,7 @@ def basic_profile_extraction(raw_text: str, photo_file_id: str | None = None) ->
     description = None
     requirement = None
     desc_markers = ("المواصفات", "صفاتها", "صفاته", "الوصف")
-    req_markers = ("المطلوب", "مواصفات الشريك", "بدها شاب", "بدي شاب", "بده شاب", "بدي بنت", "بده بنت", "بده شابة")
+    req_markers = ("المطلوب", "مواصفات الشريك", "بدها شاب", "بدي شاب", "بدي شب", "بده شاب", "بدي بنت", "بده بنت", "بده شابة")
     for line in lines:
         if any(marker in line for marker in desc_markers):
             description = line.split(":", 1)[1].strip() if ":" in line else line
@@ -303,9 +339,19 @@ def basic_profile_extraction(raw_text: str, photo_file_id: str | None = None) ->
             requirement = requirement_match.group(1).strip()
 
     return ProfileExtraction(
-        gender=gender, name=name, age=age, province=province, city=city,
-        marital_status=marital_status, occupation=occupation, height=height, weight=weight,
+        gender=gender,
+        name=name,
+        age=age,
+        province=province,
+        city=city,
+        marital_status=marital_status,
+        occupation=occupation,
+        height=height,
+        weight=weight,
         description=_remove_private_contact_values(description),
-        partner_requirements=_remove_private_contact_values(requirement), phone=phone,
-        telegram_username=telegram_username, whatsapp=whatsapp, photo_file_id=photo_file_id,
+        partner_requirements=_remove_private_contact_values(requirement),
+        phone=phone,
+        telegram_username=telegram_username,
+        whatsapp=whatsapp,
+        photo_file_id=photo_file_id,
     )
