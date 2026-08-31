@@ -1,13 +1,12 @@
 services:
   - type: web
-    name: bot-naseb
+    name: naseb-bot
     runtime: python
     plan: free
-    branch: main
+    region: frankfurt
     buildCommand: pip install -r requirements.txt
     startCommand: python -m app.main
     healthCheckPath: /health
-    autoDeploy: true
     envVars:
       - key: TELEGRAM_BOT_TOKEN
         sync: false
@@ -15,9 +14,20 @@ services:
         sync: false
       - key: AI_API_KEY
         sync: false
+      - key: AI_MODEL
+        value: gemini-2.5-flash-lite
       - key: DATABASE_URL
-        sync: false
+        fromDatabase:
+          name: naseb-postgres
+          property: connectionString
       - key: WEBHOOK_SECRET
         generateValue: true
       - key: WEBHOOK_PATH
         value: /telegram
+      - key: CHAM_CASH_ACCOUNT
+        sync: false
+
+databases:
+  - name: naseb-postgres
+    plan: free
+    region: frankfurt
