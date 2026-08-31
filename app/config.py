@@ -19,16 +19,17 @@ class Settings:
     telegram_bot_token: str
     admin_user_ids: frozenset[int]
     ai_api_key: str | None = None
+    ai_model: str = "gemini-2.5-flash-lite"
     database_url: str | None = None
     public_base_url: str | None = None
     webhook_secret: str | None = None
     webhook_path: str = "/telegram"
     port: int = 10000
+    cham_cash_account: str = ""
 
     @classmethod
     def from_env(cls) -> "Settings":
         load_dotenv()
-
         token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
         if not token:
             raise SettingsError("TELEGRAM_BOT_TOKEN is required")
@@ -44,15 +45,17 @@ class Settings:
 
         webhook_path = os.getenv("WEBHOOK_PATH", "/telegram").strip() or "/telegram"
         if not webhook_path.startswith("/"):
-            webhook_path = f"/{webhook_path}"
+            webhook_path = "/" + webhook_path
 
         return cls(
             telegram_bot_token=token,
             admin_user_ids=frozenset(admin_user_ids),
             ai_api_key=os.getenv("AI_API_KEY") or None,
+            ai_model=os.getenv("AI_MODEL", "gemini-2.5-flash-lite").strip() or "gemini-2.5-flash-lite",
             database_url=os.getenv("DATABASE_URL") or None,
             public_base_url=(os.getenv("PUBLIC_BASE_URL") or os.getenv("RENDER_EXTERNAL_URL") or None),
             webhook_secret=os.getenv("WEBHOOK_SECRET") or None,
             webhook_path=webhook_path,
             port=port,
+            cham_cash_account=os.getenv("CHAM_CASH_ACCOUNT", "").strip(),
         )
