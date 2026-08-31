@@ -13,6 +13,7 @@ from app.database.repositories import (
     profile_to_dict,
 )
 from app.services.ai import (
+    AIExtractionError,
     AIService,
     ProfileExtraction,
     basic_profile_extraction,
@@ -235,15 +236,26 @@ async def _parse_and_preview(
 ) -> int:
     ai: AIService = context.application.bot_data["ai_service"]
     deterministic = basic_profile_extraction(raw_text, photo_file_id)
+
+    if not ai.is_configured:
+        await update.effective_message.reply_text(
+            "⚠️ Gemini حالياً مو مهيأ. ما رح أعتمد على تخمين محلي لتنظيم الإعلان.\n\n"
+            "تأكد من AI_API_KEY على Render وبعدين أعد إرسال الإعلان.",
+        )
+        return ADD_RAW
+
     try:
-        extraction = await ai.extract_profile(raw_text) if ai.is_configured else deterministic
-        if ai.is_configured:
-            extraction = merge_private_contacts(extraction, deterministic)
-        extraction = normalize_profile_extraction(extraction)
-    except Exception:
-        extraction = normalize_profile_extraction(deterministic)
+        extraction = await AIService.resolve_profile_extraction(ai, raw_text, deterministic)
+    except AIExtractionError:
+        await update.effective_message.reply_text(
+            "⚠️ ما قدرت أوصل لـGemini لتنظيم الإعلان.\n\n"
+            "ما تم حفظ أي بيانات. تأكد من مفتاح Gemini وإعداداته على Render، وبعدها أعد إرسال الإعلان.",
+        )
+        return ADD_RAW
+
     if photo_file_id and not extraction.photo_file_id:
         extraction = extraction.model_copy(update={"photo_file_id": photo_file_id})
+
     context.user_data["pending_profile"] = extraction_to_draft(extraction)
     return await _show_pending_preview(update, context, extraction=extraction)
 
