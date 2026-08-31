@@ -14,6 +14,11 @@ SEARCH_TEXT = 30
 PAYMENT_TX = 31
 
 
+def next_search_state(has_valid_filters: bool) -> int:
+    """Keep the search conversation open for invalid input; finish valid searches."""
+    return END if has_valid_filters else SEARCH_TEXT
+
+
 def _settings(context: Any):
     return context.application.bot_data["settings"]
 
@@ -70,16 +75,15 @@ async def client_text(update: Any, context: Any) -> int:
 
 async def _run_search(update: Any, context: Any, text: str) -> int:
     base = parse_search_text(text)
-    if not any((
+    has_valid_filters = any((
         base.gender, base.province, base.city, base.age_min, base.age_max,
         base.marital_status, base.occupation,
-    )):
-        message = "⚠️ ما قدرت أفهم فلاتر البحث. اكتب مثلاً: بنت من دمشق بين 22 و27 سنة عزباء"
-        if update.callback_query:
-            await update.callback_query.edit_message_text(message)
-        else:
-            await update.effective_message.reply_text(message)
-        return END
+    ))
+    if not has_valid_filters:
+        await update.effective_message.reply_text(
+            "⚠️ ما قدرت أفهم فلاتر البحث. اكتبلي مثلاً: بدي بنت من دمشق بين 22 و28 سنة عزباء\n\nلسا البحث مفتوح، ابعتلي المحاولة الجاية.",
+        )
+        return next_search_state(has_valid_filters=False)
 
     filters = base
     ai = context.application.bot_data["ai_service"]
@@ -99,7 +103,7 @@ async def _run_search(update: Any, context: Any, text: str) -> int:
             "🔎 ما لقينا عروض مطابقة لهالمواصفات. جرّب وسّع البحث شوي.",
             reply_markup=client_main_keyboard(),
         )
-        return END
+        return next_search_state(has_valid_filters=True)
 
     await update.effective_message.reply_text(
         f"💗 لقينا {len(rows)} عرض مناسب مبدئياً.\n\n"
@@ -110,7 +114,7 @@ async def _run_search(update: Any, context: Any, text: str) -> int:
         ),
         reply_markup=client_results_keyboard([row.request_number for row in rows]),
     )
-    return END
+    return next_search_state(has_valid_filters=True)
 
 
 async def _show_latest(update: Any, context: Any) -> None:
