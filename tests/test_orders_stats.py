@@ -53,3 +53,20 @@ def test_contact_order_number_is_assigned_without_shared_zero_placeholder():
         order = orders.create_contact_request(778, profile.request_number, Decimal("5.00"), "شام كاش")
         assert order.order_number is not None
         assert order.order_number != 0
+
+
+def test_payment_cannot_be_confirmed_before_transaction_review():
+    with make_session() as session:
+        profiles = ProfileRepository(session)
+        profile = profiles.create(
+            ProfileDraft(
+                public_data={"gender": "female", "name": "ريم", "age": 26, "province": "حلب"},
+                private_contact_data={"phone": "0933445566"},
+            )
+        )
+        session.commit()
+        orders = OrderRepository(session)
+        order = orders.create_contact_request(779, profile.request_number, Decimal("5.00"), "شام كاش")
+        confirmed = orders.confirm_payment(order.order_number)
+        assert confirmed.status == "pending_payment"
+        assert confirmed.transaction_id is None
