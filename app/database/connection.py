@@ -20,7 +20,11 @@ def build_engine(database_url: str | None) -> Engine | None:
     """Build an engine without connecting to the database during import/startup."""
     if not database_url:
         return None
-    return create_engine(normalize_database_url(database_url), pool_pre_ping=True)
+    normalized = normalize_database_url(database_url)
+    kwargs = {"pool_pre_ping": True}
+    if not normalized.startswith("sqlite://"):
+        kwargs.update({"pool_size": 5, "max_overflow": 0})
+    return create_engine(normalized, **kwargs)
 
 
 def build_session_factory(engine: Engine | None):
