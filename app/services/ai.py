@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -43,25 +44,58 @@ PROFILE_SCHEMA_INSTRUCTIONS = """
 القيم غير الموجودة يجب أن تبقى null. الجنس يجب أن يكون male أو female إذا كان واضحاً.
 الهاتف وTelegram وWhatsApp بيانات سرية وتُنقل فقط إلى الحقول الخاصة بها.
 لا تحوّل المواصفات غير الواضحة إلى أرقام أو حقائق.
+إذا وردت صيغة مثل «عمري 20» أو «عمرها 24» أو «عمره 30» فهي عمر صاحب/صاحبة الإعلان نفسه، وليست عمر الشريك المطلوب.
+العبارات الوصفية مثل «بنت من سوريا» أو «شاب من دمشق» ليست اسماً، إلا إذا ظهر اسم شخص فعلي بشكل واضح.
 """
+
+
+def _remove_private_contact_values(value: str | None) -> str | None:
+    """Remove phone/contact fragments from free-text fields to prevent privacy leaks."""
+    if not value:
+        return None
+    text = value.strip()
+    phone_pattern = r"(?:\+?963\s?)?(?:0?9|09)[0-9xX][0-9xX -]{5,}"
+    text = re.sub(rf"(?:رقمي|رقم(?:ي)?\s*الهاتف|الهاتف|الموبايل|المحمول)\s*[:=-]?\s*{phone_pattern}", "", text, flags=re.I)
+    text = re.sub(phone_pattern, "", text)
+    text = re.sub(r"(?:واتساب|واتس|whatsapp|telegram|تلغرام|تيليجرام)\s*[:=@]?\s*[@A-Za-z0-9_+\- ]+", "", text, flags=re.I)
+    text = re.sub(r"\s{2,}", " ", text)
+    return text.strip(" -:،,") or None
+
+
+def _normalize_name(value: str | None) -> str | None:
+    if not value:
+        return None
+    name = value.strip()
+    lowered = name.lower()
+    generic_fragments = (
+        "بنت من", "شاب من", "عروس من", "عريس من", "فتاة من", "رجل من", "امرأة من",
+    )
+    if any(fragment in lowered for fragment in generic_fragments):
+        return None
+    if name in {"بنت", "شاب", "عروس", "عريس", "فتاة", "رجل", "امرأة"}:
+        return None
+    return name
 
 
 def merge_private_contacts(
     ai_extraction: ProfileExtraction, deterministic_extraction: ProfileExtraction
 ) -> ProfileExtraction:
-    """Keep only contact values explicitly recovered by deterministic parsing.
-
-    AI is never trusted as the source of private contact facts. If deterministic
-    extraction cannot find a contact value in the raw text, the corresponding
-    AI-provided value is discarded rather than persisted.
-    """
-    return ai_extraction.model_copy(
-        update={
-            "phone": deterministic_extraction.phone,
-            "telegram_username": deterministic_extraction.telegram_username,
-            "whatsapp": deterministic_extraction.whatsapp,
-        }
+    """Merge only facts explicitly found in raw text, with deterministic contacts taking priority."""
+    updates: dict[str, Any] = {
+        "phone": deterministic_extraction.phone,
+        "telegram_username": deterministic_extraction.telegram_username,
+        "whatsapp": deterministic_extraction.whatsapp,
+    }
+    public_fields = (
+        "gender", "name", "age", "province", "city", "marital_status", "occupation",
+        "height", "weight", "description", "partner_requirements",
     )
+    for field_name in public_fields:
+        ai_value = getattr(ai_extraction, field_name)
+        deterministic_value = getattr(deterministic_extraction, field_name)
+        if ai_value is None and deterministic_value is not None:
+            updates[field_name] = deterministic_value
+    return ai_extraction.model_copy(update=updates)
 
 
 def normalize_profile_extraction(extraction: ProfileExtraction) -> ProfileExtraction:
@@ -69,13 +103,13 @@ def normalize_profile_extraction(extraction: ProfileExtraction) -> ProfileExtrac
 
     updates = {
         "gender": normalize_gender(extraction.gender) if extraction.gender else None,
-        "name": extraction.name.strip() if extraction.name else None,
+        "name": _normalize_name(extraction.name),
         "province": extraction.province.strip() if extraction.province else None,
         "city": extraction.city.strip() if extraction.city else None,
         "marital_status": extraction.marital_status.strip() if extraction.marital_status else None,
         "occupation": extraction.occupation.strip() if extraction.occupation else None,
-        "description": extraction.description.strip() if extraction.description else None,
-        "partner_requirements": extraction.partner_requirements.strip() if extraction.partner_requirements else None,
+        "description": _remove_private_contact_values(extraction.description),
+        "partner_requirements": _remove_private_contact_values(extraction.partner_requirements),
         "phone": normalize_digits(extraction.phone.strip()) if extraction.phone else None,
         "telegram_username": extraction.telegram_username.strip().lstrip("@") if extraction.telegram_username else None,
         "whatsapp": normalize_digits(extraction.whatsapp.strip()) if extraction.whatsapp else None,
@@ -150,8 +184,6 @@ def basic_profile_extraction(raw_text: str, photo_file_id: str | None = None) ->
 
     It extracts only values explicitly present in the raw text; unknown fields remain null.
     """
-    import re
-
     from app.services.profiles import normalize_digits
 
     normalized = normalize_digits(raw_text.replace("،", " ")).strip()
@@ -165,11 +197,18 @@ def basic_profile_extraction(raw_text: str, photo_file_id: str | None = None) ->
         gender = "male"
 
     age = None
-    age_match = re.search(r"(?<!\d)(\d{2})(?:\s*)(?:سنة|سنين|عام|عمر)", normalized)
-    if age_match:
-        candidate = int(age_match.group(1))
+    age_patterns = (
+        r"(?:عمري|عمري أنا|عمرها|عمره|العمر|عمر)\s*[:=-]?\s*(\d{2})",
+        r"(?<!\d)(\d{2})(?:\s*)(?:سنة|سنين|عام)",
+    )
+    for pattern in age_patterns:
+        match = re.search(pattern, normalized)
+        if not match:
+            continue
+        candidate = int(match.group(1))
         if 18 <= candidate <= 100:
             age = candidate
+            break
 
     province_names = (
         "ريف دمشق", "دمشق", "حلب", "حمص", "حماة", "اللاذقية", "طرطوس", "إدلب",
@@ -232,7 +271,9 @@ def basic_profile_extraction(raw_text: str, photo_file_id: str | None = None) ->
             continue
         if "سنة" in line or "عام" in line or "عمر" in line or "طول" in line or "وزن" in line:
             continue
-        if re.search(r"(?:الهاتف|الواتساب|واتساب|telegram|تلغرام|تيليجرام)", line, re.I):
+        if re.search(r"(?:الهاتف|الواتساب|واتساب|telegram|تلغرام|تيليجرام|رقمي)", line, re.I):
+            continue
+        if any(token in line for token in ("بنت", "شاب", "عروس", "عريس", "فتاة", "رجل", "امرأة")):
             continue
         if len(line) <= 60 and not any(token in line for token in ("بدها", "بدي", "المواصفات", "المطلوب", "يرغب", "تفضل")):
             name = line
@@ -250,16 +291,21 @@ def basic_profile_extraction(raw_text: str, photo_file_id: str | None = None) ->
     description = None
     requirement = None
     desc_markers = ("المواصفات", "صفاتها", "صفاته", "الوصف")
-    req_markers = ("المطلوب", "مواصفات الشريك", "بدها شاب", "بدي بنت", "بده بنت", "بده شابة")
+    req_markers = ("المطلوب", "مواصفات الشريك", "بدها شاب", "بدي شاب", "بده شاب", "بدي بنت", "بده بنت", "بده شابة")
     for line in lines:
         if any(marker in line for marker in desc_markers):
             description = line.split(":", 1)[1].strip() if ":" in line else line
         if any(marker in line for marker in req_markers):
             requirement = line.split(":", 1)[1].strip() if ":" in line else line
+    if requirement is None:
+        requirement_match = re.search(r"((?:بدي|بدها|بده)\s+(?:شب|شاب|بنت|شابة)\b.+)", normalized, re.I)
+        if requirement_match:
+            requirement = requirement_match.group(1).strip()
 
     return ProfileExtraction(
         gender=gender, name=name, age=age, province=province, city=city,
         marital_status=marital_status, occupation=occupation, height=height, weight=weight,
-        description=description, partner_requirements=requirement, phone=phone,
+        description=_remove_private_contact_values(description),
+        partner_requirements=_remove_private_contact_values(requirement), phone=phone,
         telegram_username=telegram_username, whatsapp=whatsapp, photo_file_id=photo_file_id,
     )
