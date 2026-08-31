@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: bot-naseb
+    runtime: python
+    plan: free
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m app.main
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: ADMIN_USER_IDS
+        sync: false
+      - key: AI_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: WEBHOOK_SECRET
+        generateValue: true
+      - key: WEBHOOK_PATH
+        value: /telegram
