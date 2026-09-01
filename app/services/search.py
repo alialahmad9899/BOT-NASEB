@@ -15,6 +15,17 @@ PROVINCES = [
 ]
 
 
+def _explicit_city_reference(text: str) -> bool:
+    """Return True only when the user explicitly identifies a city/location."""
+    return bool(
+        re.search(r"(?:مدينة|المدينة|ساكن(?:ة)?|سكن(?:ي)?)\s+", text)
+        or re.search(
+            r"(?:ريف دمشق|دمشق|حلب|حمص|حماة|اللاذقية|طرطوس|إدلب|الرقة|دير الزور|الحسكة|درعا|السويداء|القنيطرة)\s*[-–/]\s*",
+            text,
+        )
+    )
+
+
 def parse_search_text(text: str) -> ProfileFilters:
     normalized = normalize_digits(text).strip().lower()
     gender = None
@@ -30,22 +41,30 @@ def parse_search_text(text: str) -> ProfileFilters:
         marital = "عازب"
     elif "مطلقة" in normalized or "مطلق" in normalized:
         marital = "مطلقة" if "مطلقة" in normalized else "مطلق"
+
     age_min = age_max = None
-    m = re.search(r"(?:من|بين)\s*(\d{2})\s*(?:الى|إلى|و|ل|حتى|-)+\s*(\d{2})", normalized)
+    m = re.search(
+        r"(?:من|بين)\s*(?:ال)?\s*(\d{1,3})\s*(?:الى|إلى|و|ل|حتى|-)+\s*(?:ال)?\s*(\d{1,3})",
+        normalized,
+    )
     if m:
         age_min, age_max = sorted((int(m.group(1)), int(m.group(2))))
     else:
-        range_match = re.search(r"(\d{2})\s*[-–]\s*(\d{2})", normalized)
+        range_match = re.search(r"(?:ال)?\s*(\d{2,3})\s*[-–]\s*(?:ال)?\s*(\d{2,3})", normalized)
         if range_match:
             age_min, age_max = sorted((int(range_match.group(1)), int(range_match.group(2))))
         else:
-            single = re.search(r"(?:عمر|العمر)\s*(\d{2})", normalized)
+            single = re.search(r"(?:عمر|العمر)\s*(?:ال)?\s*(\d{1,3})", normalized)
             if single:
                 age_min = age_max = int(single.group(1))
             elif normalized.isdigit() and 18 <= int(normalized) <= 100:
                 age_min = age_max = int(normalized)
+
     city = None
-    hyphen_city = re.search(r"(?:ريف دمشق|دمشق|حلب|حمص|حماة|اللاذقية|طرطوس|إدلب|الرقة|دير الزور|الحسكة|درعا|السويداء|القنيطرة)\s*[-–/]\s*([\u0600-\u06ff]{3,30})", normalized)
+    hyphen_city = re.search(
+        r"(?:ريف دمشق|دمشق|حلب|حمص|حماة|اللاذقية|طرطوس|إدلب|الرقة|دير الزور|الحسكة|درعا|السويداء|القنيطرة)\s*[-–/]\s*([\u0600-\u06ff]{3,30})",
+        normalized,
+    )
     if hyphen_city:
         city = hyphen_city.group(1).strip()
     city_match = re.search(r"(?:مدينة|ساكن(?:ة)?|سكن(?:ي)?|من|بـ|ب)\s+([\u0600-\u06ff]{3,30})", normalized)
@@ -53,6 +72,13 @@ def parse_search_text(text: str) -> ProfileFilters:
         candidate = city_match.group(1).strip(" ،,")
         if not city and candidate not in {p.lower() for p in PROVINCES} and candidate not in {p.lower().split()[0] for p in PROVINCES}:
             city = candidate
+
+    # A bare province name (e.g. "بنت دمشق") is a province filter, not an
+    # additional city filter. Explicit city wording or province-city notation
+    # above is still allowed to populate the city filter.
+    if city and province and city == province and not _explicit_city_reference(normalized):
+        city = None
+
     occupation = None
     for marker in ("مدرسة", "مدرس", "مهندس", "طبيب", "ممرض", "موظف", "موظفة", "محامي", "محامية", "تاجر", "متعهد", "ربة منزل"):
         if marker in normalized:
@@ -67,12 +93,12 @@ def _mentions_target_age(text: str, age: int) -> bool:
     if re.search(rf"(?:^|\s)عمري\s*[:=]?\s*{re.escape(value)}(?:\s|$)", normalized):
         return False
     if re.search(
-        rf"(?:عمر|العمر|بعمر|عمرها|عمره)\s*[:=]?\s*{re.escape(value)}(?:\s|$)",
+        rf"(?:عمر|العمر|بعمر|عمرها|عمره)\s*[:=]?\s*(?:ال)?\s*{re.escape(value)}(?:\s|$)",
         normalized,
     ):
         return True
     for match in re.finditer(
-        r"(?:بين|من)\s*(\d{2})\s*(?:و|الى|إلى|ل|حتى|[-–])\s*(\d{2})",
+        r"(?:بين|من)\s*(?:ال)?\s*(\d{1,3})\s*(?:و|الى|إلى|ل|حتى|[-–])\s*(?:ال)?\s*(\d{1,3})",
         normalized,
     ):
         if value in {match.group(1), match.group(2)}:
@@ -97,6 +123,8 @@ def filters_from_ai(extraction: SearchFilterExtraction, raw_text: str | None = N
 
     city = extraction.city.strip() if extraction.city else None
     if source and city and city.lower() not in source:
+        city = None
+    if city and province and city.lower() == province.lower() and not _explicit_city_reference(source):
         city = None
 
     age_min = extraction.age_min if extraction.age_min and 18 <= extraction.age_min <= 100 else None
