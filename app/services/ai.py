@@ -1,4 +1,4 @@
-"""Google Gemini integration with validated structured output."""
+"""Gemini integration for structured marriage-profile extraction and natural-language search."""
 
 from __future__ import annotations
 
@@ -15,21 +15,18 @@ class AIExtractionError(RuntimeError):
 
 class ProfileExtraction(BaseModel):
     model_config = ConfigDict(extra="ignore")
+
     gender: str | None = Field(default=None, description="male or female")
     name: str | None = None
     age: int | None = None
-    province: str | None = None
-    city: str | None = None
+    residence: str | None = None
     marital_status: str | None = None
-    children_count: int | None = Field(default=None, description="Number of children when explicitly stated")
+    children_count: int | None = Field(default=None, description="Explicit child count, including 0")
     occupation: str | None = None
     education: str | None = None
-    nationality: str | None = None
-    religion: str | None = None
     height: float | None = None
     weight: float | None = None
     appearance: str | None = None
-    description: str | None = None
     partner_requirements: str | None = None
     phone: str | None = None
     telegram_username: str | None = None
@@ -39,9 +36,9 @@ class ProfileExtraction(BaseModel):
 
 class SearchFilterExtraction(BaseModel):
     model_config = ConfigDict(extra="ignore")
+
     gender: str | None = Field(default=None, description="male or female")
-    province: str | None = None
-    city: str | None = None
+    residence: str | None = None
     age_min: int | None = None
     age_max: int | None = None
     marital_status: str | None = None
@@ -52,53 +49,41 @@ class SearchFilterExtraction(BaseModel):
 
 
 PROFILE_SCHEMA_INSTRUCTIONS = """
-أنت مسؤول عن تحويل إعلان زواج سوري خام إلى بيانات منظمة دقيقة وقابلة للحفظ والنشر.
+حوّل النص الخام لإعلان زواج إلى JSON منظم لنظام «لقاء ونصيب».
+النص قد يكون عامياً سورياً، مختصراً، غير مرتب، أو يحوي أخطاء إملائية.
+افهم المعنى من السياق، ولا تعتمد على مطابقة كلمات حرفية فقط.
 
-استخرج المعلومات الموجودة فعلياً في النص فقط، ولا تخترع أي قيمة. إذا كانت غير موجودة أو غير مؤكدة = null.
-افهم العامية السورية والأخطاء الإملائية البسيطة مع المحافظة على معنى النص.
+ممنوع اختراع أي معلومة. إذا لم توجد المعلومة بوضوح = null.
 
 الحقول:
-- gender: جنس صاحب الإعلان فقط. لا تستنتجه من مواصفات الشريك.
-- name: اسم الشخص نفسه فقط، مثل «اسمي آية» -> «آية».
+- gender: جنس صاحب الإعلان فقط.
+- name: اسم الشخص فقط، بدون «اسمي» أو أي كلام حوله.
 - age: عمر صاحب الإعلان.
-- province: المحافظة السورية. «سوريا» وحدها ليست محافظة.
-- city: المدينة إذا ذُكرت بوضوح. إذا كان النص «دمشق» فقط، فالمحافظة دمشق والمدينة دمشق لأن اسم المدينة مطابق للمحافظة. إذا كان «ريف حماة» فالمحافظة حماة والمدينة/الموقع «ريف حماة».
-- marital_status: عزباء، عازبة، عزب، متزوجة، متزوج، مطلقة، مطلق، أرملة، أرمل، مع تطبيع الصياغة.
-- children_count: عدد الأولاد فقط إذا ذكر العدد أو نفي وجود الأولاد صراحةً. «ماعندي ولاد» = 0. «عندي ولدين» = 2. لا تستنتج العدد.
-- occupation: العمل/المهنة أو الحالة الدراسية العملية مثل «ربة منزل»، «طالبة طب».
-- education: المستوى التعليمي أو الدراسة إذا ذُكر، مثل «شهادة بكالوريا» أو «دراسة الطب».
-- nationality: الجنسية إذا ذُكرت.
-- religion: الديانة إذا ذُكرت.
-- height/weight: أرقام الطول والوزن فقط.
-- appearance: الشكل الخارجي والصفات المرتبطة بالمظهر مثل «سمراء جذابة، محجبة».
-- description: المواصفات الشخصية والهوايات والطباع فقط، مثل «تحب الغناء وصوتها حلو».
-- partner_requirements: كل مواصفات الشريك المطلوب، مثل العمر، الطول، التدخين، الدين، الجدية، الصفات، وغيرها، بعد ترتيبها دون اختراع.
-- phone/telegram_username/whatsapp: بيانات سرية فقط.
+- residence: مكان السكن في حقل واحد فقط. افهم «من دمشق»، «ساكن بحمص»، «ساكنة بريف حماة»، «مقيم في جرمانا»، «عايش بحلب»، «من ريف حلب» وغيرها حسب السياق. لا تفصل محافظة ومدينة.
+- marital_status: الحالة الاجتماعية، مع تصحيح الأخطاء البسيطة مثل مطلقه/متزوجه/ارمله.
+- children_count: العدد الصريح للأولاد. «ماعندي ولاد» = 0، «عندي ولدين» = 2. لا تخترع العدد.
+- occupation: العمل أو الوضع المهني/الدراسي الحالي مثل «ربة منزل» أو «طالبة طب».
+- education: الشهادة أو المستوى التعليمي إذا ذُكر بوضوح مثل «بكالوريا».
+- height / weight: الأرقام فقط.
+- appearance: الشكل الخارجي فقط مثل «سمراء جذابة ومحجبة».
+- partner_requirements: كل شروط الشريك المطلوب، ويمكن أن تتضمن العمر والطول والسكن والدين والجنسية والتدخين والصفات وغيرها. رتّبها بوضوح ولا تخترع.
+- phone / telegram_username / whatsapp: بيانات التواصل السرية فقط.
 
-أمثلة:
-«اسمي منا من حلب بدرس طب بغني وصوتي حلو عمري 30 سنة مطلقة ماعندي ولاد بدي شب يكون طويل وما بدخن ورقمي 093..."
-=> name=منا, province=حلب, city=حلب, age=30, marital_status=مطلقة, children_count=0, occupation=طالبة طب, description=تهتم بالغناء وصوتها جميل, partner_requirements=شاب طويل وغير مدخن, phone=...
-
-مهم: لا تضع رقم الهاتف داخل description أو partner_requirements.
+لا توجد حقول للجنسية أو الديانة أو «المواصفات الشخصية». إذا ذُكرت جنسية أو ديانة تخص الشريك المطلوب، احتفظ بها داخل partner_requirements. صفات صاحب الإعلان الشخصية غير المطلوبة في الـSchema لا تحفظ كحقل مستقل.
 """
 
 SEARCH_FILTER_INSTRUCTIONS = """
-أنت محلل طلبات بحث لبوت «لقاء ونصيب» السوري.
-حوّل الكلام الطبيعي والعامي إلى فلاتر بحث حقيقية فقط.
+أنت محلل طلب بحث طبيعي لبوت زواج سوري. افهم كلام المستخدم من السياق، بما فيه العامية والأخطاء، وحوّله إلى JSON مطابق للـSchema فقط.
 
-قواعد:
-- لا تخترع أي فلتر غير موجود بالنص.
-- «بنت، صبية، فتاة، عروس» = female.
-- «شب، شاب، رجل، عريس» = male.
-- «شام، الشام» في السكن = دمشق.
-- «دمشق» أو «بنت دمشق» = province=دمشق، وليس city=دمشق، إلا إذا ذُكرت المدينة صراحة أو «دمشق - جرمانا».
-- افهم «عمرا، عمرها، عمره، بالعمر، بعمر، سنها، سنه».
-- افهم «بين 20 و39»، «بين ال20 وال39»، «من 20 لـ39»، «من ال20 لل39»، «20-39»، «20 إلى 39».
-- «حوالي 30» أو «قرابة 30» = 30 بالضبط، بدون اختراع نطاق.
-- الحالة الاجتماعية تطبّع إلى المعاني الصحيحة.
-- education/occupation تستخرج فقط عند ذكرها بوضوح.
-- children_min/max تستخرج إذا ذكر المستخدم عدد الأولاد المطلوب مثل «ما عندها ولاد» أو «بدي بدون أولاد» أو «عندها ولد واحد».
-- أعد JSON مطابقاً للـSchema فقط.
+- لا تخترع أي فلتر غير موجود أو مفهوم بوضوح.
+- «بنت/صبية/فتاة/عروس» = female، و«شب/شاب/رجل/عريس» = male.
+- residence هو الموقع الوحيد. افهم «من»، «ساكن»، «ساكنة»، «مقيم»، «مقيمة»، «عايش»، «عايشة»، «بـ»، «بمنطقة» وغيرها دون الحاجة لقائمة كلمات ثابتة.
+- افهم «شام/الشام» كدمشق عند استخدامها للسكن.
+- افهم جميع الصيغ الشائعة للعمر: عمره، عمرها، عمرا، سنه، سنها، بعمر، بين 20 و39، بين ال20 وال39، من 20 لـ39، من ال20 لل39، 20-39، 20 إلى 39.
+- «حوالي 30» و«قرابة 30» = 30 فقط.
+- الحالة الاجتماعية والتعليم والعمل وعدد الأولاد تُفهم حسب المعنى.
+- «بدون ولاد» أو «ما عندها ولاد» أو «ما عنده أولاد» = children_min=0 وchildren_max=0.
+- أعد JSON فقط.
 """
 
 
@@ -119,10 +104,9 @@ def _normalize_name(value: str | None) -> str | None:
         return None
     name = value.strip()
     lowered = name.lower()
-    generic_fragments = ("بنت من", "شاب من", "عروس من", "عريس من", "فتاة من", "رجل من", "امرأة من")
-    if any(fragment in lowered for fragment in generic_fragments):
-        return None
     if name in {"بنت", "شاب", "عروس", "عريس", "فتاة", "رجل", "امرأة"}:
+        return None
+    if any(fragment in lowered for fragment in ("بنت من", "شاب من", "عروس من", "عريس من", "فتاة من", "رجل من", "امرأة من")):
         return None
     return name
 
@@ -130,15 +114,23 @@ def _normalize_name(value: str | None) -> str | None:
 def _normalize_marital_status(value: str | None) -> str | None:
     if not value:
         return None
-    v = value.strip().lower()
     mapping = {
-        "عزبا": "عزباء", "عزبى": "عزباء", "عزبة": "عزباء", "عزباء": "عزباء", "عازبة": "عزباء",
+        "عزبا": "عزباء", "عزبى": "عزباء", "عزبة": "عزباء", "عازبة": "عزباء", "عزباء": "عزباء",
         "اعزب": "عازب", "أعزب": "عازب", "عازب": "عازب",
         "مطلقة": "مطلقة", "مطلقه": "مطلقة", "مطلق": "مطلق",
-        "أرملة": "أرملة", "ارملة": "أرملة", "أرمل": "أرمل",
+        "أرملة": "أرملة", "ارملة": "أرملة", "أرمل": "أرمل", "ارمل": "أرمل",
         "متزوجة": "متزوجة", "متزوجه": "متزوجة", "متزوج": "متزوج",
+        "منفصلة": "منفصلة", "منفصله": "منفصلة", "منفصل": "منفصل",
     }
-    return mapping.get(v, value.strip())
+    return mapping.get(value.strip().lower(), value.strip())
+
+
+def _normalize_residence(value: str | None) -> str | None:
+    if not value:
+        return None
+    text = re.sub(r"\s+", " ", value.strip())
+    text = re.sub(r"^(?:سوريا|سورية)\s*[-–:]\s*", "", text, flags=re.I)
+    return text or None
 
 
 def merge_private_contacts(ai_extraction: ProfileExtraction, deterministic_extraction: ProfileExtraction) -> ProfileExtraction:
@@ -147,12 +139,7 @@ def merge_private_contacts(ai_extraction: ProfileExtraction, deterministic_extra
         "telegram_username": deterministic_extraction.telegram_username,
         "whatsapp": deterministic_extraction.whatsapp,
     }
-    public_fields = (
-        "gender", "name", "age", "province", "city", "marital_status", "children_count",
-        "occupation", "education", "nationality", "religion", "height", "weight",
-        "appearance", "description", "partner_requirements",
-    )
-    for field_name in public_fields:
+    for field_name in ("gender", "name", "age", "residence", "marital_status", "children_count", "occupation", "education", "height", "weight", "appearance", "partner_requirements"):
         ai_value = getattr(ai_extraction, field_name)
         deterministic_value = getattr(deterministic_extraction, field_name)
         if ai_value is None and deterministic_value is not None:
@@ -162,31 +149,18 @@ def merge_private_contacts(ai_extraction: ProfileExtraction, deterministic_extra
 
 def normalize_profile_extraction(extraction: ProfileExtraction) -> ProfileExtraction:
     from app.services.profiles import normalize_digits, normalize_gender
-
-    province = extraction.province.strip() if extraction.province else None
-    city = extraction.city.strip() if extraction.city else None
-    if city is None and province and province in {
-        "دمشق", "حلب", "حمص", "حماة", "اللاذقية", "طرطوس", "إدلب", "الرقة", "دير الزور", "الحسكة", "درعا", "السويداء", "القنيطرة",
-    }:
-        city = province
-
-    children_count = extraction.children_count
-    if children_count is not None and children_count < 0:
-        children_count = None
-
+    children_count = extraction.children_count if extraction.children_count is None or extraction.children_count >= 0 else None
     updates = {
         "gender": normalize_gender(extraction.gender) if extraction.gender else None,
         "name": _normalize_name(extraction.name),
-        "province": province,
-        "city": city,
+        "residence": _normalize_residence(extraction.residence),
         "marital_status": _normalize_marital_status(extraction.marital_status),
         "children_count": children_count,
         "occupation": extraction.occupation.strip() if extraction.occupation else None,
         "education": extraction.education.strip() if extraction.education else None,
-        "nationality": extraction.nationality.strip() if extraction.nationality else None,
-        "religion": extraction.religion.strip() if extraction.religion else None,
+        "height": extraction.height,
+        "weight": extraction.weight,
         "appearance": _remove_private_contact_values(extraction.appearance),
-        "description": _remove_private_contact_values(extraction.description),
         "partner_requirements": _remove_private_contact_values(extraction.partner_requirements),
         "phone": normalize_digits(extraction.phone.strip()) if extraction.phone else None,
         "telegram_username": extraction.telegram_username.strip().lstrip("@") if extraction.telegram_username else None,
@@ -209,18 +183,13 @@ class AIService:
         if not self._api_key:
             raise RuntimeError("AI_API_KEY is not configured")
         if self._client is None:
-            try:
-                from google import genai
-            except ImportError as exc:
-                raise RuntimeError("google-genai package is not installed") from exc
+            from google import genai
             self._client = genai.Client(api_key=self._api_key)
         return self._client
 
     def extract_profile_sync(self, raw_text: str) -> ProfileExtraction:
-        client = self._get_client()
         from google.genai import types
-
-        response = client.models.generate_content(
+        response = self._get_client().models.generate_content(
             model=self.model,
             contents=f"{PROFILE_SCHEMA_INSTRUCTIONS}\n\nالنص الخام:\n{raw_text}",
             config=types.GenerateContentConfig(
@@ -230,6 +199,8 @@ class AIService:
                 automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
             ),
         )
+        if not response.text:
+            raise RuntimeError("Gemini returned an empty response")
         return ProfileExtraction.model_validate_json(response.text)
 
     async def extract_profile(self, raw_text: str) -> ProfileExtraction:
@@ -246,11 +217,10 @@ class AIService:
         return normalize_profile_extraction(merge_private_contacts(ai_extraction, deterministic_extraction))
 
     def parse_search_filters_sync(self, raw_text: str) -> SearchFilterExtraction:
-        client = self._get_client()
         from google.genai import types
-        response = client.models.generate_content(
+        response = self._get_client().models.generate_content(
             model=self.model,
-            contents=f"{SEARCH_FILTER_INSTRUCTIONS}\n\nطلب المستخدم:\n{raw_text}",
+            contents=f"{SEARCH_FILTER_INSTRUCTIONS}\n\nطلب البحث:\n{raw_text}",
             config=types.GenerateContentConfig(
                 temperature=0,
                 response_mime_type="application/json",
@@ -258,6 +228,8 @@ class AIService:
                 automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
             ),
         )
+        if not response.text:
+            raise RuntimeError("Gemini returned an empty response")
         return SearchFilterExtraction.model_validate_json(response.text)
 
     async def parse_search_filters(self, raw_text: str) -> SearchFilterExtraction:
@@ -265,170 +237,105 @@ class AIService:
 
 
 def basic_profile_extraction(raw_text: str, photo_file_id: str | None = None) -> ProfileExtraction:
-    """Conservative local extraction for explicit facts and privacy validation."""
+    """Conservative local supplement used only for explicit facts and privacy protection."""
     from app.services.profiles import normalize_digits
 
     normalized = normalize_digits(raw_text.replace("،", " ")).strip()
-    lines = [line.strip() for line in normalized.splitlines() if line.strip()]
-    joined = " ".join(lines)
-
-    gender = None
-    if any(token in joined for token in ("أنثى", "انثى", "بنت", "عروس", "صبية", "فتاة")):
-        gender = "female"
-    elif any(token in joined for token in ("ذكر", "شاب", "عريس", "رجل")):
-        gender = "male"
+    lower = normalized.lower()
+    gender = "female" if re.search(r"بنت|صبية|فتاة|عروس|أنثى|انثى", lower) else "male" if re.search(r"شب|شاب|رجل|عريس|ذكر", lower) else None
 
     age = None
-    for pattern in (
-        r"(?:عمري|عمري أنا|عمرها|عمره|عمرا|العمر|عمر|بعمر|سنها|سنه)\s*[:=-]?\s*(\d{1,3})",
-        r"(?<!\d)(\d{2,3})(?:\s*)(?:سنة|سنين|عام)",
-    ):
-        match = re.search(pattern, normalized)
+    for pattern in (r"(?:عمري|عمرها|عمره|عمرا|العمر|عمر|بعمر|سنها|سنه)\s*[:=-]?\s*(\d{1,3})", r"(?<!\d)(\d{2,3})\s*(?:سنة|سنين|عام)\b"):
+        match = re.search(pattern, normalized, re.I)
         if match and 18 <= int(match.group(1)) <= 100:
             age = int(match.group(1))
             break
 
-    province_names = (
-        "ريف دمشق", "دمشق", "حلب", "حمص", "حماة", "اللاذقية", "طرطوس", "إدلب", "الرقة", "دير الزور", "الحسكة", "درعا", "السويداء", "القنيطرة",
+    residence = None
+    patterns = (
+        r"(?:من|ساكن(?:ة)?|مقيم(?:ة)?|عايش(?:ة)?)\s+(?:في\s+|ب(?:ـ)?\s*)?([^,\n]+?)(?=\s+(?:عمري|عمرها|عمره|العمر|سنة|سن|مطلق|متزوج|عزب|أرمل|أرملة|بدها|بدي|بده|رقمي|رقم)\b|$)",
+        r"(?:بنت|شاب|صبية|عروس|عريس)\s+(?:من\s+)?(ريف\s+(?:دمشق|حلب|حمص|حماة|إدلب)|دمشق|حلب|حمص|حماة|اللاذقية|طرطوس|إدلب|الرقة|دير الزور|الحسكة|درعا|السويداء|القنيطرة|جرمانا)",
     )
-    province = next((item for item in province_names if item in joined), None)
+    for pattern in patterns:
+        match = re.search(pattern, normalized, re.I)
+        if match:
+            candidate = match.group(1).strip(" -–:،")
+            if 1 <= len(candidate) <= 100:
+                residence = _normalize_residence(candidate)
+                break
 
-    phone = None
-    phone_match = re.search(r"(?:\+?963\s?)?(?:0?9|09)[0-9xX][0-9xX -]{5,}", normalized)
-    if phone_match:
-        phone = phone_match.group(0).strip()
-
-    telegram_username = None
-    telegram_match = re.search(r"(?:telegram|تلغرام|تيليجرام)\s*[:=@]?\s*@?([A-Za-z0-9_]{3,})", normalized, re.I)
-    if telegram_match:
-        telegram_username = telegram_match.group(1)
-
-    whatsapp = None
-    whatsapp_match = re.search(r"(?:whatsapp|واتساب|واتس)\s*[:=@]?\s*([+0-9][+0-9 xX-]{6,})", normalized, re.I)
-    if whatsapp_match:
-        whatsapp = whatsapp_match.group(1).strip()
+    children_count = 0 if re.search(r"(?:ما\s*عندي|ماعندي|ما\s*عندها|ماعندها|ما\s*عنده|ماعنده|بدون)\s+(?:ولاد|أولاد|اولاد|أطفال|اطفال)", lower) else None
+    if children_count is None:
+        for phrase, count in {"ولد واحد": 1, "طفل واحد": 1, "ولدين": 2, "طفلين": 2, "ثلاثة أولاد": 3, "ثلاث اولاد": 3}.items():
+            if phrase in lower:
+                children_count = count
+                break
+        if children_count is None:
+            match = re.search(r"(?:عندي|عندها|عنده|لديها|لديه)\s*(\d{1,2})\s*(?:ولاد|أولاد|اولاد|أطفال|اطفال)", lower)
+            if match:
+                children_count = int(match.group(1))
 
     marital_status = None
-    for value in ("عزباء", "عازبة", "عزب", "عازب", "متزوجة", "متزوج", "مطلقة", "مطلقه", "مطلق", "أرملة", "ارملة", "أرمل", "ارمل"):
-        if value in joined:
-            marital_status = value
+    for value in ("عزباء", "عازبة", "عزبا", "عزب", "أعزب", "اعزب", "عازب", "مطلقة", "مطلقه", "مطلق", "أرملة", "ارملة", "أرمل", "ارمل", "متزوجة", "متزوجه", "متزوج", "منفصلة", "منفصله", "منفصل"):
+        if value in lower:
+            marital_status = _normalize_marital_status(value)
             break
 
-    children_count = None
-    if re.search(r"(?:ما?عندي|ليس عندي|بدون)\s+(?:اولاد|أولاد|ولاد|أطفال|اطفال)", normalized):
-        children_count = 0
-    else:
-        child_match = re.search(r"(?:عندي|لدي|عندو|عندها|عنده)\s+(?:عدد\s+)?(\d{1,2})\s+(?:اولاد|أولاد|ولاد|أطفال|اطفال|ابناء|أبناء)", normalized)
-        if child_match:
-            children_count = int(child_match.group(1))
-
-    height = None
-    height_match = re.search(r"(?:طول|الطول)\s*[:=-]?\s*(\d{2,3})(?:\s*سم)?", normalized)
-    if height_match:
-        height = float(height_match.group(1))
-
-    weight = None
-    weight_match = re.search(r"(?:وزن|الوزن)\s*[:=-]?\s*(\d{2,3})(?:\s*كغ|\s*كجم)?", normalized)
-    if weight_match:
-        weight = float(weight_match.group(1))
-
     occupation = None
-    for marker in ("ربة منزل", "طالب طب", "طالبة طب", "مدرسة", "مدرس", "مهندس", "طبيب", "ممرض", "موظف", "موظفة", "محامي", "محامية", "تاجر", "متعهد"):
-        if marker in joined:
+    for marker in ("ربة منزل", "طالبة طب", "طالب طب", "طالبة", "طالب", "مدرسة", "مدرس", "مهندس", "طبيب", "ممرض", "موظف", "موظفة", "محامي", "محامية", "تاجر", "متعهد"):
+        if marker in normalized:
             occupation = marker
             break
 
     education = None
-    education_match = re.search(r"(?:المستوى التعليمي|التعليم|الدراسة|دارسة|بدرس)\s*[:=-]?\s*([^،,\n]+)", normalized)
-    if education_match:
-        education = education_match.group(1).strip()
+    for marker in ("بكالوريا", "بكالوريوس", "ليسانس", "ماجستير", "دكتوراه", "جامعي", "جامعة", "ثانوي"):
+        if marker in normalized:
+            education = marker
+            break
 
-    nationality = None
-    nationality_match = re.search(r"(?:الجنسية)\s*[:=-]?\s*([^،,\n]+)", normalized)
-    if nationality_match:
-        nationality = nationality_match.group(1).strip()
-
-    religion = None
-    religion_match = re.search(r"(?:الديانة|الدين)\s*[:=-]?\s*([^،,\n]+)", normalized)
-    if religion_match:
-        religion = religion_match.group(1).strip()
+    height = None
+    match = re.search(r"(?:طول|الطول)\s*[:=-]?\s*(\d{2,3})(?:\s*سم)?", normalized)
+    if match:
+        height = float(match.group(1))
+    weight = None
+    match = re.search(r"(?:وزن|الوزن)\s*[:=-]?\s*(\d{2,3})(?:\s*كغ|\s*كجم)?", normalized)
+    if match:
+        weight = float(match.group(1))
 
     name = None
-    explicit_name_match = re.search(r"(?:اسمي|الاسم)\s*[:=-]?\s*([^\n،,]+)", normalized)
-    if explicit_name_match:
-        candidate = explicit_name_match.group(1).strip()
-        candidate = re.split(r"\s+(?:عمري|من|ساكن|ساكنة|بدرس|درست|مطلقة|عزباء|عازبة|متزوجة|متزوج)\b", candidate, maxsplit=1)[0].strip()
-        if candidate:
-            name = candidate
+    match = re.search(r"(?:اسمي|الاسم)\s*[:=-]?\s*([^\n،,]+)", normalized)
+    if match:
+        candidate = re.split(r"\s+(?:عمري|من|ساكن|ساكنة|مقيم|مقيمة)\b", match.group(1).strip(), maxsplit=1)[0].strip()
+        name = _normalize_name(candidate)
 
-    known = set(province_names) | {
-        "أنثى", "انثى", "بنت", "عروس", "صبية", "فتاة", "ذكر", "شاب", "عريس", "رجل",
-        "عزباء", "عازبة", "عزب", "عازب", "متزوجة", "متزوج", "مطلقة", "مطلقه", "مطلق", "أرملة", "ارملة", "أرمل", "ارمل",
-    }
-    if name is None:
-        province_index_for_name = next((i for i, line in enumerate(lines) if province and province in line), len(lines))
-        for line in lines[:province_index_for_name]:
-            if re.fullmatch(r"[0-9+\- xX]+", line):
-                continue
-            if line == province or line in known:
-                continue
-            if "سنة" in line or "عام" in line or "عمر" in line or "طول" in line or "وزن" in line:
-                continue
-            if re.search(r"(?:الهاتف|الواتساب|واتساب|telegram|تلغرام|تيليجرام|رقمي)", line, re.I):
-                continue
-            if any(token in line for token in ("بنت", "شاب", "عروس", "عريس", "فتاة", "رجل", "امرأة")):
-                continue
-            if len(line) <= 60 and not any(token in line for token in ("بدها", "بدي", "المواصفات", "المطلوب", "يرغب", "تفضل")):
-                name = line
-                break
-
-    city = None
-    if province:
-        province_index = next((i for i, line in enumerate(lines) if province in line), -1)
-        if province_index >= 0:
-            for line in lines[province_index + 1:province_index + 3]:
-                if line and line not in known and line != name and len(line) <= 40 and not re.search(r"\d", line):
-                    city = line
-                    break
-    if city is None and province and province in {"دمشق", "حلب", "حمص", "حماة", "اللاذقية", "طرطوس", "إدلب", "الرقة", "دير الزور", "الحسكة", "درعا", "السويداء", "القنيطرة"}:
-        city = province
+    phone_match = re.search(r"(?:\+?963\s?)?(?:0?9|09)[0-9xX][0-9xX -]{5,}", normalized)
+    phone = phone_match.group(0).strip() if phone_match else None
+    tg_match = re.search(r"(?:telegram|تلغرام|تيليجرام)\s*[:=@]?\s*@?([A-Za-z0-9_]{3,})", normalized, re.I)
+    telegram_username = tg_match.group(1) if tg_match else None
+    wa_match = re.search(r"(?:whatsapp|واتساب|واتس)\s*[:=@]?\s*([+0-9][+0-9 xX-]{6,})", normalized, re.I)
+    whatsapp = wa_match.group(1).strip() if wa_match else None
 
     appearance = None
-    appearance_match = re.search(r"(?:الشكل|المظهر|المظهر الخارجي)\s*[:=-]?\s*([^\n]+)", normalized)
-    if appearance_match:
-        appearance = appearance_match.group(1).strip()
+    if any(token in lower for token in ("سمراء", "بيضاء", "حنطية", "محجبة", "منقبة", "شقراء", "جذابة", "جميلة", "وسيم")):
+        tokens = [token for token in ("سمراء", "بيضاء", "حنطية", "محجبة", "منقبة", "شقراء", "جذابة", "جميلة", "وسيم") if token in lower]
+        appearance = "، ".join(dict.fromkeys(tokens))
 
-    description = None
-    requirement = None
-    desc_markers = ("المواصفات الشخصية", "المواصفات", "صفاتها", "صفاته", "الوصف")
-    req_markers = ("المطلوب", "مواصفات الشريك", "بدها شاب", "بدي شاب", "بدي شب", "بده شاب", "بدي بنت", "بده بنت", "بده شابة", "بدي عريس", "بدي عروس")
-    for line in lines:
-        if any(marker in line for marker in desc_markers):
-            description = line.split(":", 1)[1].strip() if ":" in line else line
-        if any(marker in line for marker in req_markers):
-            requirement = line.split(":", 1)[1].strip() if ":" in line else line
-    if requirement is None:
-        requirement_match = re.search(r"((?:بدي|بدها|بده)\s+(?:شب|شاب|بنت|شابة|عروس|عريس)\b.+)", normalized, re.I)
-        if requirement_match:
-            requirement = requirement_match.group(1).strip()
+    req_match = re.search(r"((?:بدي|بدها|بده)\s+(?:شب|شاب|بنت|شابة|عروس|عريس)\b.+)", normalized, re.I)
+    partner_requirements = _remove_private_contact_values(req_match.group(1)) if req_match else None
 
     return ProfileExtraction(
         gender=gender,
         name=name,
         age=age,
-        province=province,
-        city=city,
+        residence=residence,
         marital_status=marital_status,
         children_count=children_count,
         occupation=occupation,
         education=education,
-        nationality=nationality,
-        religion=religion,
         height=height,
         weight=weight,
-        appearance=_remove_private_contact_values(appearance),
-        description=_remove_private_contact_values(description),
-        partner_requirements=_remove_private_contact_values(requirement),
+        appearance=appearance,
+        partner_requirements=partner_requirements,
         phone=phone,
         telegram_username=telegram_username,
         whatsapp=whatsapp,
