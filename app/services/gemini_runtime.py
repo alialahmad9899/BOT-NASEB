@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from app.services.ai import AIService, ProfileExtraction
+from app.services.ai import AIService, PROFILE_SCHEMA_INSTRUCTIONS, ProfileExtraction
 
 logger = logging.getLogger("bot-naseb.gemini")
 
@@ -19,7 +19,7 @@ class GeminiAIService(AIService):
         try:
             response = client.models.generate_content(
                 model=self.model,
-                contents=f"{self.__class__.__mro__[1].__dict__.get('PROFILE_SCHEMA_INSTRUCTIONS', '')}\n\nالنص الخام:\n{raw_text}",
+                contents=f"{PROFILE_SCHEMA_INSTRUCTIONS}\n\nالنص الخام:\n{raw_text}",
                 config=types.GenerateContentConfig(
                     temperature=0,
                     response_mime_type="application/json",
