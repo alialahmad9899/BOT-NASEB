@@ -31,12 +31,11 @@ def test_search_filter_extraction_accepts_age_range():
 
 
 def test_basic_profile_fallback_extracts_arabic_digits_without_inventing_missing_data():
-    parsed = basic_profile_extraction("آية\n٢٤ سنة\nأنثى\nريف دمشق\nجرمانا\nمدرسة\n09xxxxxxxx")
+    parsed = basic_profile_extraction("آية\n٢٤ سنة\nأنثى\nمن ريف دمشق\nجرمانا\nمدرسة\n09xxxxxxxx")
     assert parsed.name == "آية"
     assert parsed.age == 24
     assert parsed.gender == "female"
-    assert parsed.residence is not None
-    assert "جرمانا" in parsed.residence or parsed.residence == "ريف دمشق"
+    assert parsed.residence == "ريف دمشق"
     assert parsed.occupation == "مدرسة"
     assert parsed.phone == "09xxxxxxxx"
 
