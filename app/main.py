@@ -21,7 +21,7 @@ from app.database.models import Base
 from app.database import admin_models as _admin_models  # noqa: F401 - registers additive Admin V2 tables
 from app.handlers.admin import ADD_EDIT, ADD_RAW, DELETE_REQUEST, DISABLE_REQUEST, EDIT_FIELDS, EDIT_REQUEST, SEARCH_TEXT
 from app.handlers.admin_entry import ADMIN_V2_INPUT, admin_callback, admin_photo, admin_text
-from app.handlers.client import SEARCH_CONFIRM, SEARCH_TEXT as CLIENT_SEARCH_TEXT, client_callback, client_text
+from app.handlers.client import SEARCH_CONFIRM, SEARCH_TEXT as CLIENT_SEARCH_TEXT, client_text
 from app.handlers.payment import (
     WHATSAPP_CONFIRM,
     WHATSAPP_INPUT,
@@ -32,6 +32,7 @@ from app.handlers.payment import (
     request_contact_callback,
     stale_payment_callback,
 )
+from app.handlers.safe_routing import admin_callback_router, admin_text_router, client_callback_router
 from app.handlers.start import start_command
 from app.services.admin_meta import backfill_meta
 from app.services.gemini_runtime import GeminiAIService
@@ -61,16 +62,16 @@ def build_application(settings: Settings) -> Application:
     application.bot_data["ai_service"] = GeminiAIService(settings.ai_api_key, settings.ai_model)
 
     admin_conversation = ConversationHandler(
-        entry_points=[CallbackQueryHandler(admin_callback, pattern=r"^admin:")],
+        entry_points=[CallbackQueryHandler(admin_callback_router, pattern=r"^admin:")],
         states={
-            ADD_RAW: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text), MessageHandler(filters.PHOTO, admin_photo), CallbackQueryHandler(admin_callback, pattern=r"^admin:")],
-            ADD_EDIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text), CallbackQueryHandler(admin_callback, pattern=r"^admin:")],
-            SEARCH_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text), CallbackQueryHandler(admin_callback, pattern=r"^admin:")],
-            EDIT_REQUEST: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text), CallbackQueryHandler(admin_callback, pattern=r"^admin:")],
-            EDIT_FIELDS: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text), CallbackQueryHandler(admin_callback, pattern=r"^admin:")],
-            DISABLE_REQUEST: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text), CallbackQueryHandler(admin_callback, pattern=r"^admin:")],
-            DELETE_REQUEST: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text), CallbackQueryHandler(admin_callback, pattern=r"^admin:")],
-            ADMIN_V2_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text), MessageHandler(filters.PHOTO, admin_photo), CallbackQueryHandler(admin_callback, pattern=r"^admin:")],
+            ADD_RAW: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text), MessageHandler(filters.PHOTO, admin_photo), CallbackQueryHandler(admin_callback_router, pattern=r"^admin:")],
+            ADD_EDIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text), CallbackQueryHandler(admin_callback_router, pattern=r"^admin:")],
+            SEARCH_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text), CallbackQueryHandler(admin_callback_router, pattern=r"^admin:")],
+            EDIT_REQUEST: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text), CallbackQueryHandler(admin_callback_router, pattern=r"^admin:")],
+            EDIT_FIELDS: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text), CallbackQueryHandler(admin_callback_router, pattern=r"^admin:")],
+            DISABLE_REQUEST: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text), CallbackQueryHandler(admin_callback_router, pattern=r"^admin:")],
+            DELETE_REQUEST: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text), CallbackQueryHandler(admin_callback_router, pattern=r"^admin:")],
+            ADMIN_V2_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text_router), MessageHandler(filters.PHOTO, admin_photo), CallbackQueryHandler(admin_callback_router, pattern=r"^admin:")],
         },
         fallbacks=[CommandHandler("cancel", cancel_command)],
         allow_reentry=True,
@@ -96,10 +97,10 @@ def build_application(settings: Settings) -> Application:
     )
 
     client_conversation = ConversationHandler(
-        entry_points=[CallbackQueryHandler(client_callback, pattern=r"^client:")],
+        entry_points=[CallbackQueryHandler(client_callback_router, pattern=r"^client:")],
         states={
-            CLIENT_SEARCH_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, client_text), CallbackQueryHandler(client_callback, pattern=r"^client:")],
-            SEARCH_CONFIRM: [CallbackQueryHandler(client_callback, pattern=r"^client:")],
+            CLIENT_SEARCH_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, client_text), CallbackQueryHandler(client_callback_router, pattern=r"^client:")],
+            SEARCH_CONFIRM: [CallbackQueryHandler(client_callback_router, pattern=r"^client:")],
         },
         fallbacks=[CommandHandler("cancel", cancel_command)],
         allow_reentry=True,
@@ -124,14 +125,19 @@ async def cancel_command(update: Any, context: Any) -> int:
 async def application_error(update: object, context: Any) -> None:
     error = context.error
     error_type = type(error).__name__ if error else "UnknownError"
-    logger.error("Unhandled application error: %s", error_type)
+    logger.error(
+        "Unhandled application error: %s: %s",
+        error_type,
+        str(error) if error else "",
+        exc_info=(type(error), error, error.__traceback__) if error else None,
+    )
     message = getattr(update, "effective_message", None)
     if message is None:
         return
     try:
         await message.reply_text(user_message_for_error(error))
     except Exception:
-        logger.error("Failed to send user-facing error message: ReplyError")
+        logger.error("Failed to send user-facing error message: ReplyError", exc_info=True)
 
 
 async def _health(_: Request) -> PlainTextResponse:
