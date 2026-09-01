@@ -81,6 +81,7 @@ class Order(Base):
     amount_usd: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, default=Decimal("5.00"))
     payment_method: Mapped[str] = mapped_column(String(80), nullable=False, default="شام كاش")
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending_payment", index=True)
+    whatsapp: Mapped[str | None] = mapped_column(String(120), index=True)
     transaction_id: Mapped[str | None] = mapped_column(String(160))
     notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
