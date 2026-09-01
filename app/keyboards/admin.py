@@ -11,6 +11,7 @@ def admin_main_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton("🗃️ الأرشيف", callback_data="admin:v2:profiles:0:archived"), InlineKeyboardButton("⚠️ المعطلة", callback_data="admin:v2:profiles:0:inactive")],
         [InlineKeyboardButton("📊 التقارير", callback_data="admin:v2:reports"), InlineKeyboardButton("🧾 سجل العمليات", callback_data="admin:v2:audit")],
         [InlineKeyboardButton("💾 النسخ الاحتياطية", callback_data="admin:v2:backups"), InlineKeyboardButton("⚙️ الإعدادات", callback_data="admin:v2:settings")],
+        [InlineKeyboardButton("🛑 منطقة الخطر", callback_data="admin:v2:danger")],
     ])
 
 
