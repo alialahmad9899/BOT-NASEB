@@ -537,10 +537,24 @@ async def _show_orders(update: Any, context: Any) -> None:
         await update.callback_query.edit_message_text("💳 ما في طلبات معلّقة حالياً.", reply_markup=_admin_main_keyboard())
         return
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-    rows = [[InlineKeyboardButton(f"🔎 {order.order_number}", callback_data=f"admin:order:view:{order.order_number}"), InlineKeyboardButton("✅", callback_data=f"admin:order:confirm:{order.order_number}"), InlineKeyboardButton("❌", callback_data=f"admin:order:reject:{order.order_number}")] for order in orders]
-    rows.append([InlineKeyboardButton("⬅️ لوحة الأدمن", callback_data="admin:menu")])
-    text = "💳 الطلبات المعلّقة:\n\n" + "\n".join(f"📌 طلب دفع {order.order_number} — الإعلان {order.profile.request_number} — {order.status}" for order in orders)
-    await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(rows))
+    status_labels = {"pending_payment": "بانتظار الدفع", "pending_review": "بانتظار مراجعة الدفع"}
+    buttons = []
+    for order in orders:
+        row = [InlineKeyboardButton(f"🔎 {order.order_number}", callback_data=f"admin:order:view:{order.order_number}")]
+        if order.status == "pending_review":
+            row.extend([
+                InlineKeyboardButton("✅", callback_data=f"admin:order:confirm:{order.order_number}"),
+                InlineKeyboardButton("❌", callback_data=f"admin:order:reject:{order.order_number}"),
+            ])
+        else:
+            row.append(InlineKeyboardButton("❌", callback_data=f"admin:order:reject:{order.order_number}"))
+        buttons.append(row)
+    buttons.append([InlineKeyboardButton("⬅️ لوحة الأدمن", callback_data="admin:menu")])
+    text = "💳 الطلبات المعلّقة:\n\n" + "\n".join(
+        f"📌 طلب دفع {order.order_number} — الإعلان {order.profile.request_number} — {status_labels.get(order.status, order.status)}"
+        for order in orders
+    )
+    await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons))
 
 
 async def _view_order(update: Any, context: Any, order_number: int | None) -> int:
@@ -552,7 +566,8 @@ async def _view_order(update: Any, context: Any, order_number: int | None) -> in
             await update.callback_query.edit_message_text("❌ ما لقينا طلب الدفع.", reply_markup=_admin_main_keyboard())
             return END
         profile = profile_to_dict(order.profile, order.profile.contact)
-    text = (f"💳 طلب الدفع رقم {order.order_number}\n" f"👤 Telegram User ID: {order.user_telegram_id}\n" f"💵 المبلغ: {order.amount_usd} USD\n" f"💳 طريقة الدفع: {order.payment_method}\n" f"🧾 رقم العملية: {order.transaction_id or 'لم يُرسل بعد'}\n" f"📊 الحالة: {order.status}\n\n" + format_admin_profile(profile))
+    status_labels = {"pending_payment": "بانتظار الدفع", "pending_review": "بانتظار مراجعة الدفع", "paid": "مدفوع", "rejected": "مرفوض"}
+    text = (f"💳 طلب الدفع رقم {order.order_number}\n" f"👤 Telegram User ID: {order.user_telegram_id}\n" f"💵 المبلغ: {order.amount_usd} USD\n" f"💳 طريقة الدفع: {order.payment_method}\n" f"🧾 رقم العملية: {order.transaction_id or 'لم يُرسل بعد'}\n" f"📊 الحالة: {status_labels.get(order.status, order.status)}\n\n" + format_admin_profile(profile))
     await update.callback_query.edit_message_text(text, reply_markup=_order_actions_keyboard(order_number))
     return END
 
@@ -561,15 +576,17 @@ async def _confirm_order(update: Any, context: Any, order_number: int | None) ->
     if order_number is None:
         return END
     with _session(context) as session:
-        order = OrderRepository(session).confirm_payment(order_number)
-        if order is None:
+        repo = OrderRepository(session)
+        current = repo.get(order_number)
+        if current is None:
             await update.callback_query.edit_message_text("❌ ما لقينا الطلب.", reply_markup=_admin_main_keyboard())
             return END
+        if current.status != "pending_review" or not current.transaction_id:
+            await update.callback_query.edit_message_text("⚠️ ما فينا نأكد الطلب قبل ما يوصل رقم العملية وتتحول الحالة لمراجعة الدفع.", reply_markup=_admin_main_keyboard())
+            return END
+        order = repo.confirm_payment(order_number)
         session.commit()
         user_id = order.user_telegram_id
-    if order.status != "paid":
-        await update.callback_query.edit_message_text("⚠️ ما فينا نأكد الطلب قبل ما يوصل رقم عملية الدفع وتتحول الحالة لمراجعة.", reply_markup=_admin_main_keyboard())
-        return END
     try:
         await context.application.bot.send_message(user_id, f"✅ تم تأكيد دفعتك للطلب رقم {order_number}. الصفحة رح تتابع معك.")
     except Exception:
@@ -582,10 +599,15 @@ async def _reject_order(update: Any, context: Any, order_number: int | None) -> 
     if order_number is None:
         return END
     with _session(context) as session:
-        order = OrderRepository(session).reject_payment(order_number, "رفض يدوي من الأدمن")
-        if order is None:
+        repo = OrderRepository(session)
+        current = repo.get(order_number)
+        if current is None:
             await update.callback_query.edit_message_text("❌ ما لقينا الطلب.", reply_markup=_admin_main_keyboard())
             return END
+        if current.status in {"paid", "rejected"}:
+            await update.callback_query.edit_message_text("⚠️ هالطلب تمت معالجته من قبل.", reply_markup=_admin_main_keyboard())
+            return END
+        order = repo.reject_payment(order_number, "رفض يدوي من الأدمن")
         session.commit()
         user_id = order.user_telegram_id
     try:
