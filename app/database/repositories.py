@@ -99,7 +99,8 @@ class ProfileRepository:
         if filters.gender:
             stmt = stmt.where(Profile.gender == filters.gender)
         if filters.residence:
-            stmt = stmt.where(Profile.residence.ilike(f"%{filters.residence.strip()}%"))
+            residence = filters.residence.strip().rstrip(" -–")
+            stmt = stmt.where(Profile.residence.ilike(f"{residence}%"))
         if filters.age_min is not None:
             stmt = stmt.where(Profile.age >= filters.age_min)
         if filters.age_max is not None:
