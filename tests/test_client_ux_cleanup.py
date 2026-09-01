@@ -1,4 +1,4 @@
-from app.handlers.client import WHATSAPP_CONFIRM, WHATSAPP_TEXT
+from app.handlers.payment import WHATSAPP_CONFIRM, WHATSAPP_INPUT
 from app.keyboards.client import client_main_keyboard, client_whatsapp_confirm_keyboard
 
 
@@ -33,4 +33,4 @@ def test_whatsapp_confirmation_keyboard_has_only_simple_actions():
 
 
 def test_whatsapp_states_are_available_for_the_client_flow():
-    assert WHATSAPP_TEXT != WHATSAPP_CONFIRM
+    assert WHATSAPP_INPUT != WHATSAPP_CONFIRM
