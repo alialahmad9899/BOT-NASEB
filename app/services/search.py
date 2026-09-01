@@ -1,4 +1,4 @@
-"""Search parsing and filter normalization."""
+"""Natural-language search parsing with Gemini-backed filters and DB-safe normalization."""
 
 from __future__ import annotations
 
@@ -9,70 +9,82 @@ from app.database.repositories import ProfileFilters
 from app.services.ai import SearchFilterExtraction
 from app.services.profiles import normalize_digits
 
-PROVINCES = [
-    "ريف دمشق", "دمشق", "حلب", "حمص", "حماة", "اللاذقية", "طرطوس", "إدلب",
-    "الرقة", "دير الزور", "الحسكة", "درعا", "السويداء", "القنيطرة",
-]
-
-PROVINCE_ALIASES = {
-    "شام": "دمشق", "الشام": "دمشق", "دمشق": "دمشق", "حلب": "حلب", "حمص": "حمص",
-    "حماة": "حماة", "اللاذقية": "اللاذقية", "طرطوس": "طرطوس", "ادلب": "إدلب", "إدلب": "إدلب",
-    "الرقة": "الرقة", "دير الزور": "دير الزور", "الحسكة": "الحسكة", "درعا": "درعا",
-    "السويداء": "السويداء", "القنيطرة": "القنيطرة", "ريف دمشق": "ريف دمشق",
+RESIDENCE_ALIASES = {
+    "شام": "دمشق",
+    "الشام": "دمشق",
+    "دمشق": "دمشق",
+    "حلب": "حلب",
+    "حمص": "حمص",
+    "حماة": "حماة",
+    "اللاذقية": "اللاذقية",
+    "طرطوس": "طرطوس",
+    "ادلب": "إدلب",
+    "إدلب": "إدلب",
+    "الرقة": "الرقة",
+    "دير الزور": "دير الزور",
+    "الحسكة": "الحسكة",
+    "درعا": "درعا",
+    "السويداء": "السويداء",
+    "القنيطرة": "القنيطرة",
+    "ريف دمشق": "ريف دمشق",
+    "ريف حلب": "ريف حلب",
+    "ريف حمص": "ريف حمص",
+    "ريف حماة": "ريف حماة",
+    "ريف إدلب": "ريف إدلب",
+    "جرمانا": "جرمانا",
 }
 
 MARITAL_ALIASES = {
-    "عزباء": "عزباء", "عازبة": "عزباء", "عزبا": "عزباء", "عزبة": "عزباء", "عزبى": "عزباء",
-    "عزب": "عزب", "أعزب": "أعزب", "اعزب": "أعزب", "عازب": "أعزب",
+    "عزباء": "عزباء", "عازبة": "عزباء", "عزبا": "عزباء", "عزبة": "عزباء",
+    "عزب": "عزباء", "أعزب": "عازب", "اعزب": "عازب", "عازب": "عازب",
     "مطلقة": "مطلقة", "مطلقه": "مطلقة", "مطلق": "مطلق",
     "أرملة": "أرملة", "ارملة": "أرملة", "أرمل": "أرمل", "ارمل": "أرمل",
     "متزوجة": "متزوجة", "متزوجه": "متزوجة", "متزوج": "متزوج",
+    "منفصلة": "منفصلة", "منفصله": "منفصلة", "منفصل": "منفصل",
 }
 
 
-def _canonical_province(value: str | None) -> str | None:
+def _canonical_residence(value: str | None) -> str | None:
     if not value:
         return None
-    return PROVINCE_ALIASES.get(normalize_digits(value).strip().lower())
+    normalized = re.sub(r"\s+", " ", normalize_digits(value).strip().lower())
+    return RESIDENCE_ALIASES.get(normalized, value.strip())
 
 
 def _canonical_marital(value: str | None) -> str | None:
     if not value:
         return None
-    return MARITAL_ALIASES.get(normalize_digits(value).strip().lower(), value.strip())
+    normalized = normalize_digits(value).strip().lower()
+    return MARITAL_ALIASES.get(normalized, value.strip())
 
 
 def _marital_mentioned(text: str, canonical: str) -> bool:
     return any(alias in text for alias, normalized in MARITAL_ALIASES.items() if normalized == canonical)
 
 
-def _province_mentioned(text: str, province: str) -> bool:
-    return any(alias in text for alias, canonical in PROVINCE_ALIASES.items() if canonical == province)
-
-
-def _explicit_city_reference(text: str) -> bool:
-    return bool(
-        re.search(r"(?:مدينة|المدينة|ساكن(?:ة)?|سكن(?:ي)?)\s+", text)
-        or re.search(
-            r"(?:ريف دمشق|دمشق|حلب|حمص|حماة|اللاذقية|طرطوس|إدلب|الرقة|دير الزور|الحسكة|درعا|السويداء|القنيطرة)\s*[-–/]\s*",
-            text,
-        )
-    )
+def _residence_mentioned(text: str, residence: str) -> bool:
+    normalized = normalize_digits(text).lower()
+    value = residence.strip().lower()
+    if value in normalized:
+        return True
+    for alias, canonical in RESIDENCE_ALIASES.items():
+        if canonical.lower() == value and alias in normalized:
+            return True
+    # A specific place can be returned in normalized form (for example
+    # «دمشق - جرمانا» from «جرمانا»); the specific token is enough evidence.
+    return any(part.strip() and part.strip().lower() in normalized for part in re.split(r"[-–/]", value) if len(part.strip()) >= 3)
 
 
 def _extract_age_range(text: str) -> tuple[int, int] | None:
-    match = re.search(
-        r"(?:من|بين)\s*(?:ال)?\s*(\d{1,3})\s*(?:الى|إلى|و|ل(?:ـ)?|حتى|-|–|لـ)\s*(?:ال)?\s*(\d{1,3})",
-        text,
-    )
+    match = re.search(r"(?:من|بين)\s*(?:ال)?\s*(\d{1,3})\s*(?:الى|إلى|و|ل(?:ـ)?|حتى|-|–|لـ)\s*(?:ال)?\s*(\d{1,3})", text)
     if match:
         values = tuple(sorted((int(match.group(1)), int(match.group(2)))))
-        if 18 <= values[0] <= 100 and 18 <= values[1] <= 100:
+        if all(18 <= value <= 100 for value in values):
             return values
     match = re.search(r"(?:ال)?\s*(\d{2,3})\s*[-–]\s*(?:ال)?\s*(\d{2,3})", text)
     if match:
         values = tuple(sorted((int(match.group(1)), int(match.group(2)))))
-        if 18 <= values[0] <= 100 and 18 <= values[1] <= 100:
+        if all(18 <= value <= 100 for value in values):
             return values
     return None
 
@@ -89,8 +101,8 @@ def _extract_single_age(text: str) -> int | None:
 
 
 def _extract_children_filter(text: str) -> tuple[int | None, int | None]:
-    normalized = text.lower()
-    if re.search(r"(?:بدون|ما عندها|ماعندها|ما عنده|ماعنده|ما فيها|مابيها)\s+(?:ولاد|اولاد|أولاد|أطفال|اطفال)", normalized):
+    normalized = normalize_digits(text).lower()
+    if re.search(r"(?:بدون|ما\s*عندها|ماعندها|ما\s*عنده|ماعنده|ما\s*عندي|ماعندي|ما\s*فيها|مابيها)\s+(?:ولاد|اولاد|أولاد|أطفال|اطفال)", normalized):
         return 0, 0
     if re.search(r"(?:ولد واحد|طفل واحد)", normalized):
         return 1, 1
@@ -110,21 +122,19 @@ def _extract_education(text: str) -> str | None:
     return None
 
 
+def _extract_residence(text: str) -> str | None:
+    normalized = normalize_digits(text).lower()
+    for key in sorted(RESIDENCE_ALIASES, key=len, reverse=True):
+        if re.search(rf"(?<![\u0600-\u06ff]){re.escape(key)}(?![\u0600-\u06ff])", normalized):
+            return RESIDENCE_ALIASES[key]
+    return None
+
+
 def parse_search_text(text: str) -> ProfileFilters:
     normalized = normalize_digits(text).strip().lower()
-    gender = None
-    if re.search(r"(?:بنت|صبية|عروس|حروس|انثى|أنثى|فتاة)", normalized):
-        gender = "female"
-    elif re.search(r"(?:شاب|شب|عريس|ذكر|رجل)", normalized):
-        gender = "male"
+    gender = "female" if re.search(r"بنت|صبية|عروس|حروس|انثى|أنثى|فتاة", normalized) else "male" if re.search(r"شاب|شب|عريس|ذكر|رجل", normalized) else None
 
-    province = next((p for p in PROVINCES if _province_mentioned(normalized, p)), None)
-    if not province:
-        for alias, canonical in PROVINCE_ALIASES.items():
-            if alias in normalized:
-                province = canonical
-                break
-
+    residence = _extract_residence(normalized)
     marital = None
     for raw, canonical in MARITAL_ALIASES.items():
         if raw in normalized:
@@ -140,31 +150,18 @@ def parse_search_text(text: str) -> ProfileFilters:
         if single_age is not None:
             age_min = age_max = single_age
 
-    city = None
-    hyphen_city = re.search(
-        r"(?:ريف دمشق|دمشق|حلب|حمص|حماة|اللاذقية|طرطوس|إدلب|الرقة|دير الزور|الحسكة|درعا|السويداء|القنيطرة)\s*[-–/]\s*([\u0600-\u06ff]{3,30})",
-        normalized,
-    )
-    if hyphen_city:
-        city = hyphen_city.group(1).strip()
-    city_match = re.search(r"(?:مدينة|ساكن(?:ة)?|سكن(?:ي)?)\s+([\u0600-\u06ff]{3,30})", normalized)
-    if city_match:
-        city = city_match.group(1).strip(" ،,")
-    if city and province and city == province and not _explicit_city_reference(normalized):
-        city = None
-
     children_min, children_max = _extract_children_filter(normalized)
     education = _extract_education(normalized)
+
     occupation = None
-    for marker in ("ربة منزل", "طالبة", "طالب", "مدرسة", "مدرس", "مهندس", "طبيب", "ممرض", "موظف", "موظفة", "محامي", "محامية", "تاجر", "متعهد"):
+    for marker in ("ربة منزل", "طالبة طب", "طالب طب", "طالبة", "طالب", "مدرسة", "مدرس", "مهندس", "طبيب", "ممرض", "موظف", "موظفة", "محامي", "محامية", "تاجر", "متعهد"):
         if marker in normalized:
             occupation = marker
             break
 
     return ProfileFilters(
         gender=gender,
-        province=province,
-        city=city,
+        residence=residence,
         age_min=age_min,
         age_max=age_max,
         marital_status=marital,
@@ -197,17 +194,12 @@ def filters_from_ai(extraction: SearchFilterExtraction, raw_text: str | None = N
     if source and gender == "male" and not re.search(r"شاب|شب|عريس|ذكر|رجل", source):
         gender = None
 
-    province = _canonical_province(extraction.province)
-    if source and province and not _province_mentioned(source, province):
-        province = None
-    city = extraction.city.strip() if extraction.city else None
-    if source and city and city.lower() not in source:
-        city = None
-    if city and province and city.lower() == province.lower() and not _explicit_city_reference(source):
-        city = None
+    residence = _canonical_residence(extraction.residence)
+    if source and residence and not _residence_mentioned(source, residence):
+        residence = None
 
-    age_min = extraction.age_min if extraction.age_min and 18 <= extraction.age_min <= 100 else None
-    age_max = extraction.age_max if extraction.age_max and 18 <= extraction.age_max <= 100 else None
+    age_min = extraction.age_min if extraction.age_min is not None and 18 <= extraction.age_min <= 100 else None
+    age_max = extraction.age_max if extraction.age_max is not None and 18 <= extraction.age_max <= 100 else None
     if source:
         if age_min is not None and not _mentions_target_age(source, age_min):
             age_min = None
@@ -221,7 +213,7 @@ def filters_from_ai(extraction: SearchFilterExtraction, raw_text: str | None = N
         marital = None
 
     occupation = extraction.occupation.strip() if extraction.occupation else None
-    if source and occupation and occupation.lower() not in source:
+    if source and occupation and not any(token in source for token in occupation.lower().split() if len(token) >= 3):
         occupation = None
 
     education = extraction.education.strip() if extraction.education else None
@@ -230,17 +222,15 @@ def filters_from_ai(extraction: SearchFilterExtraction, raw_text: str | None = N
 
     children_min = extraction.children_min if extraction.children_min is not None and 0 <= extraction.children_min <= 50 else None
     children_max = extraction.children_max if extraction.children_max is not None and 0 <= extraction.children_max <= 50 else None
-    if source:
-        local_min, local_max = _extract_children_filter(source)
-        if local_min is not None:
-            children_min = local_min if children_min is None else max(children_min, local_min)
-        if local_max is not None:
-            children_max = local_max if children_max is None else min(children_max, local_max)
+    local_min, local_max = _extract_children_filter(source)
+    if local_min is not None:
+        children_min = local_min if children_min is None else max(children_min, local_min)
+    if local_max is not None:
+        children_max = local_max if children_max is None else min(children_max, local_max)
 
     return ProfileFilters(
         gender=gender,
-        province=province,
-        city=city,
+        residence=residence,
         age_min=age_min,
         age_max=age_max,
         marital_status=marital,
@@ -255,8 +245,7 @@ def merge_filters(base: ProfileFilters, ai_filters: ProfileFilters) -> ProfileFi
     return replace(
         base,
         gender=ai_filters.gender or base.gender,
-        province=ai_filters.province or base.province,
-        city=ai_filters.city or base.city,
+        residence=ai_filters.residence or base.residence,
         age_min=ai_filters.age_min if ai_filters.age_min is not None else base.age_min,
         age_max=ai_filters.age_max if ai_filters.age_max is not None else base.age_max,
         marital_status=ai_filters.marital_status or base.marital_status,
