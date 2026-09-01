@@ -29,6 +29,21 @@ def _session(context: Any):
     return factory()
 
 
+def _has_filters(filters: ProfileFilters) -> bool:
+    return any((
+        filters.gender,
+        filters.province,
+        filters.city,
+        filters.age_min,
+        filters.age_max,
+        filters.marital_status,
+        filters.occupation,
+        filters.education,
+        filters.children_min is not None,
+        filters.children_max is not None,
+    ))
+
+
 def _search_prompt(target_gender: str | None = None) -> str:
     if target_gender == "male":
         return (
@@ -129,21 +144,9 @@ async def _run_search(update: Any, context: Any, text: str) -> int:
             limit=base.limit,
         )
 
-    has_valid_filters = any((
-        base.gender, base.province, base.city, base.age_min, base.age_max,
-        base.marital_status, base.occupation, base.education,
-        base.children_min is not None, base.children_max is not None,
-    ))
-    if not has_valid_filters:
-        await update.effective_message.reply_text(
-            "⚠️ ما قدرت أفهم فلاتر البحث. اكتبلي مثلاً: بدي بنت من دمشق بين 22 و28 سنة عزباء\n\n"
-            "لسا البحث مفتوح، ابعتلي المحاولة الجاية أو ارجع للقائمة الرئيسية.",
-            reply_markup=client_search_keyboard(),
-        )
-        return next_search_state(False)
-
     filters = base
     ai = context.application.bot_data["ai_service"]
+    ai_error = False
     if ai.is_configured:
         try:
             ai_filters = filters_from_ai(await ai.parse_search_filters(text), text)
@@ -163,7 +166,18 @@ async def _run_search(update: Any, context: Any, text: str) -> int:
                 )
             filters = merge_filters(base, ai_filters)
         except Exception:
+            ai_error = True
             filters = base
+
+    if not _has_filters(filters):
+        message = (
+            "⚠️ ما قدرت أفهم طلب البحث بشكل كافي. جرّب اكتب مثلاً:\n"
+            "بدي بنت من دمشق بين 22 و28، عزباء."
+        )
+        if ai_error:
+            message += "\n\n⚠️ الذكاء الاصطناعي ما قدر يحلل الطلب حالياً."
+        await update.effective_message.reply_text(message, reply_markup=client_search_keyboard())
+        return SEARCH_TEXT
 
     with _session(context) as session:
         rows = ProfileRepository(session).search(filters)
@@ -171,7 +185,7 @@ async def _run_search(update: Any, context: Any, text: str) -> int:
 
     if not rows:
         await update.effective_message.reply_text(
-            "🔎 ما لقينا عروض مطابقة لهالمواصفات. جرّب وسّع البحث شوي أو غيّر أحد الشروط.",
+            "🔎 ما لقينا عروض مطابقة لهالمواصفات. جرّب وسّع البحث شوي أو خفف شرط.",
             reply_markup=client_main_keyboard(),
         )
         return END
