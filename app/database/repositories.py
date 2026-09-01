@@ -24,6 +24,9 @@ class ProfileFilters:
     age_max: int | None = None
     marital_status: str | None = None
     occupation: str | None = None
+    education: str | None = None
+    children_min: int | None = None
+    children_max: int | None = None
     limit: int = 20
 
 
@@ -42,9 +45,14 @@ class ProfileRepository:
             province=public["province"],
             city=public.get("city"),
             marital_status=public.get("marital_status"),
+            children_count=public.get("children_count"),
             occupation=public.get("occupation"),
+            education=public.get("education"),
+            nationality=public.get("nationality"),
+            religion=public.get("religion"),
             height=public.get("height"),
             weight=public.get("weight"),
+            appearance=public.get("appearance"),
             description=public.get("description"),
             partner_requirements=public.get("partner_requirements"),
             photo_file_id=public.get("photo_file_id"),
@@ -77,9 +85,7 @@ class ProfileRepository:
         profile = self.get(request_number)
         if profile is None:
             return None
-        contact = self.session.scalar(
-            select(ProfileContact).where(ProfileContact.profile_id == profile.id)
-        )
+        contact = self.session.scalar(select(ProfileContact).where(ProfileContact.profile_id == profile.id))
         return profile_to_dict(profile, contact)
 
     def get_contact(self, request_number: int) -> ProfileContact | None:
@@ -113,6 +119,12 @@ class ProfileRepository:
             stmt = stmt.where(Profile.marital_status.ilike(f"%{filters.marital_status.strip()}%"))
         if filters.occupation:
             stmt = stmt.where(Profile.occupation.ilike(f"%{filters.occupation.strip()}%"))
+        if filters.education:
+            stmt = stmt.where(Profile.education.ilike(f"%{filters.education.strip()}%"))
+        if filters.children_min is not None:
+            stmt = stmt.where(Profile.children_count >= filters.children_min)
+        if filters.children_max is not None:
+            stmt = stmt.where(Profile.children_count <= filters.children_max)
         limit = max(1, min(filters.limit, 50))
         stmt = stmt.order_by(Profile.age.asc(), desc(Profile.created_at)).limit(limit)
         return list(self.session.scalars(stmt).all())
@@ -122,8 +134,9 @@ class ProfileRepository:
         if profile is None:
             return None
         public_fields = {
-            "gender", "name", "age", "province", "city", "marital_status", "occupation",
-            "height", "weight", "description", "partner_requirements", "photo_file_id", "status",
+            "gender", "name", "age", "province", "city", "marital_status", "children_count",
+            "occupation", "education", "nationality", "religion", "height", "weight",
+            "appearance", "description", "partner_requirements", "photo_file_id", "status",
         }
         contact_fields = {"phone", "telegram_username", "whatsapp"}
         contact = self.get_contact(request_number)
@@ -145,19 +158,14 @@ class ProfileRepository:
         stmt = select(Profile).order_by(Profile.id)
         if not include_inactive:
             stmt = stmt.where(Profile.status == "active")
-        return [
-            profile_to_dict(profile, self.get_contact(profile.request_number))
-            for profile in self.session.scalars(stmt).all()
-        ]
+        return [profile_to_dict(profile, self.get_contact(profile.request_number)) for profile in self.session.scalars(stmt).all()]
 
     def stats(self) -> dict[str, int]:
         active = self.session.scalar(select(func.count(Profile.id)).where(Profile.status == "active")) or 0
         inactive = self.session.scalar(select(func.count(Profile.id)).where(Profile.status == "inactive")) or 0
         female = self.session.scalar(select(func.count(Profile.id)).where(Profile.gender == "female", Profile.status == "active")) or 0
         male = self.session.scalar(select(func.count(Profile.id)).where(Profile.gender == "male", Profile.status == "active")) or 0
-        pending_orders = self.session.scalar(
-            select(func.count(Order.id)).where(Order.status.in_(["pending_payment", "pending_review"]))
-        ) or 0
+        pending_orders = self.session.scalar(select(func.count(Order.id)).where(Order.status.in_(["pending_payment", "pending_review"]))) or 0
         paid_orders = self.session.scalar(select(func.count(Order.id)).where(Order.status == "paid")) or 0
         return {"active": int(active), "inactive": int(inactive), "female": int(female), "male": int(male), "pending_orders": int(pending_orders), "paid_orders": int(paid_orders)}
 
@@ -166,9 +174,7 @@ class OrderRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
-    def create_contact_request(
-        self, user_telegram_id: int, request_number: int, amount: Decimal, payment_method: str
-    ) -> Order | None:
+    def create_contact_request(self, user_telegram_id: int, request_number: int, amount: Decimal, payment_method: str) -> Order | None:
         profile = ProfileRepository(self.session).get(request_number)
         if profile is None or profile.status != "active":
             return None
@@ -190,12 +196,7 @@ class OrderRepository:
         return self.session.scalar(select(Order).where(Order.order_number == order_number))
 
     def list_pending(self, limit: int = 30) -> list[Order]:
-        stmt = (
-            select(Order)
-            .where(Order.status.in_(["pending_payment", "pending_review"]))
-            .order_by(desc(Order.created_at))
-            .limit(max(1, min(limit, 50)))
-        )
+        stmt = select(Order).where(Order.status.in_(["pending_payment", "pending_review"])).order_by(desc(Order.created_at)).limit(max(1, min(limit, 50)))
         return list(self.session.scalars(stmt).all())
 
     def set_transaction_id(self, order_number: int, transaction_id: str) -> Order | None:
@@ -257,9 +258,14 @@ def profile_to_dict(profile: Profile, contact: ProfileContact | None = None) -> 
         "province": profile.province,
         "city": profile.city,
         "marital_status": profile.marital_status,
+        "children_count": profile.children_count,
         "occupation": profile.occupation,
+        "education": profile.education,
+        "nationality": profile.nationality,
+        "religion": profile.religion,
         "height": profile.height,
         "weight": profile.weight,
+        "appearance": profile.appearance,
         "description": profile.description,
         "partner_requirements": profile.partner_requirements,
         "photo_file_id": profile.photo_file_id,
@@ -268,11 +274,5 @@ def profile_to_dict(profile: Profile, contact: ProfileContact | None = None) -> 
         "updated_at": profile.updated_at.isoformat() if profile.updated_at else None,
     }
     if contact is not None:
-        result.update(
-            {
-                "phone": contact.phone,
-                "telegram_username": contact.telegram_username,
-                "whatsapp": contact.whatsapp,
-            }
-        )
+        result.update({"phone": contact.phone, "telegram_username": contact.telegram_username, "whatsapp": contact.whatsapp})
     return result
