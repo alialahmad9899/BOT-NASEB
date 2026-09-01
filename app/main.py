@@ -31,7 +31,13 @@ from app.handlers.admin import (
     admin_text,
 )
 from app.handlers.client import SEARCH_CONFIRM, SEARCH_TEXT as CLIENT_SEARCH_TEXT, client_callback, client_text
-from app.handlers.payment import WHATSAPP_INPUT, payment_whatsapp_cancel, payment_whatsapp_text, request_contact_callback
+from app.handlers.payment import (
+    WHATSAPP_INPUT,
+    payment_whatsapp_cancel,
+    payment_whatsapp_text,
+    request_contact_callback,
+    stale_payment_callback,
+)
 from app.handlers.start import start_command
 from app.services.gemini_runtime import GeminiAIService
 from app.services.runtime import user_message_for_error
@@ -93,6 +99,7 @@ def build_application(settings: Settings) -> Application:
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(admin_conversation)
     application.add_handler(payment_conversation)
+    application.add_handler(CallbackQueryHandler(stale_payment_callback, pattern=r"^client:payment:(?:submit(?:[:].*)?|cancel)$"))
     application.add_handler(client_conversation)
     application.add_error_handler(application_error)
     return application
