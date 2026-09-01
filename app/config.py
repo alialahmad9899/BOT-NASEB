@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from dotenv import load_dotenv
 
+from app.services.admin_access import AdminAccess, build_admin_access
 from app.services.permissions import parse_admin_user_ids
 
 
@@ -30,6 +31,10 @@ class Settings:
     webhook_path: str = "/telegram"
     port: int = 10000
     cham_cash_account: str = ""
+    admin_owner_ids: frozenset[int] = frozenset()
+    admin_manager_ids: frozenset[int] = frozenset()
+    admin_viewer_ids: frozenset[int] = frozenset()
+    admin_access: AdminAccess | None = None
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -38,8 +43,8 @@ class Settings:
         if not token:
             raise SettingsError("TELEGRAM_BOT_TOKEN is required")
 
-        admin_user_ids = parse_admin_user_ids(os.getenv("ADMIN_USER_IDS", ""))
-        if not admin_user_ids:
+        legacy_ids = parse_admin_user_ids(os.getenv("ADMIN_USER_IDS", ""))
+        if not legacy_ids:
             raise SettingsError("ADMIN_USER_IDS must contain at least one valid Telegram user ID")
 
         try:
@@ -55,9 +60,18 @@ class Settings:
         if ai_model in LEGACY_AI_MODELS:
             ai_model = DEFAULT_AI_MODEL
 
+        access = build_admin_access(
+            os.getenv("ADMIN_USER_IDS", ""),
+            os.getenv("ADMIN_OWNER_IDS", ""),
+            os.getenv("ADMIN_MANAGER_IDS", ""),
+            os.getenv("ADMIN_VIEWER_IDS", ""),
+        )
+        explicit_role_ids = set(access.owner_ids) | set(access.manager_ids) | set(access.viewer_ids)
+        all_admin_ids = frozenset(set(legacy_ids) | explicit_role_ids)
+
         return cls(
             telegram_bot_token=token,
-            admin_user_ids=frozenset(admin_user_ids),
+            admin_user_ids=all_admin_ids,
             ai_api_key=os.getenv("AI_API_KEY") or None,
             ai_model=ai_model,
             database_url=os.getenv("DATABASE_URL") or None,
@@ -66,4 +80,8 @@ class Settings:
             webhook_path=webhook_path,
             port=port,
             cham_cash_account=os.getenv("CHAM_CASH_ACCOUNT", "").strip(),
+            admin_owner_ids=access.owner_ids,
+            admin_manager_ids=access.manager_ids,
+            admin_viewer_ids=access.viewer_ids,
+            admin_access=access,
         )
