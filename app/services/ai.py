@@ -50,15 +50,48 @@ PROFILE_SCHEMA_INSTRUCTIONS = """
 - استخرج المعلومات الموجودة فعلياً في النص فقط، ولا تخترع أي قيمة.
 - إذا كانت القيمة غير موجودة أو غير مؤكدة، أعدها null.
 - الاسم هو اسم الشخص نفسه فقط. إذا وردت صيغة مثل «اسمي آية» أو «الاسم: آية» فالقيمة تكون «آية» فقط، وليس العبارة كاملة.
-- العمر يجب فهمه من صيغ سورية شائعة مثل «عمري 25»، «عمري: 25»، «العمر 25»، «25 سنة».
+- العمر يجب فهمه من صيغ سورية شائعة مثل «عمري 25»، «عمري: 25»، «العمر 25»، «عمرا 25»، «عمرها 25»، «25 سنة».
 - المحافظة تعني محافظة سورية محددة مثل دمشق أو حلب أو ريف دمشق. كلمة «سوريا» وحدها لا تعني محافظة ولا يجوز تحويلها إلى محافظة.
 - المدينة تستخرج فقط إذا ذُكرت بوضوح.
 - لا تستنتج جنس صاحب الإعلان من مواصفات الشريك. مثلاً «بدي شب» تعني أن الشريك المطلوب ذكر، ولا تثبت أن صاحب الإعلان أنثى.
 - افهم الأخطاء الإملائية واللهجة السورية الشائعة بحذر، لكن لا تحوّل الكلام غير الواضح إلى حقيقة.
-- «بدي شب...»، «بدي شاب...»، «بدها شاب...»، «مواصفات الشريك...» تعني مواصفات الشريك المطلوب وتوضع في partner_requirements.
+- «بدي شب...»، «بدي شاب...»، «بدها شاب...»، «بدي عريس...»، «مواصفات الشريك...» تعني مواصفات الشريك المطلوب وتوضع في partner_requirements.
 - الهاتف وTelegram وWhatsApp بيانات سرية وتُنقل فقط إلى الحقول الخاصة بها.
 - لا تضع أرقام التواصل داخل description أو partner_requirements إذا كان الرقم مجرد وسيلة تواصل.
 - النص الأصلي هو المصدر الوحيد للحقيقة.
+"""
+
+SEARCH_FILTER_INSTRUCTIONS = """
+أنت محلل طلبات بحث لبوت «لقاء ونصيب» السوري.
+حوّل كلام المستخدم الطبيعي، بما فيه العامية السورية والأخطاء البسيطة، إلى فلاتر البحث في الـSchema فقط.
+
+قواعد صارمة:
+1) لا تخترع أي فلتر غير موجود أو مفهوم بوضوح من النص.
+2) إذا لم تُذكر معلومة، أعدها null.
+3) الجنس المستهدف:
+   - بنت، بنتي، صبية، فتاة، أنثى، عروس = female
+   - شب، شاب، رجل، ذكر، عريس = male
+4) المحافظات السورية القانونية فقط:
+   ريف دمشق، دمشق، حلب، حمص، حماة، اللاذقية، طرطوس، إدلب، الرقة، دير الزور، الحسكة، درعا، السويداء، القنيطرة.
+5) «شام» و«الشام» في سياق السكن أو المحافظة = دمشق.
+6) إذا كتب المستخدم «دمشق» فقط أو «بنت دمشق»، فهذا فلتر محافظة دمشق وليس فلتر مدينة، إلا إذا قال صراحة «مدينة دمشق» أو استخدم صيغة محافظة-مدينة مثل «دمشق - جرمانا».
+7) صيغ العمر كثيرة ويجب فهمها، مثل:
+   - عمره 30، عمرها 30، عمرا 30، العمر 30، بعمر 30، 30 سنة
+   - بين 20 و39، بين ال20 وال39، من 20 لـ39، من ال20 لل39، 20-39، 20 إلى 39
+   وكلها تتحول إلى age_min وage_max بشكل صحيح.
+8) كلمات مثل «حوالي 30» أو «قرابة 30» تعني عمراً واحداً 30 فقط إذا كان الرقم واضحاً، ولا تخترع نطاقاً من عندك.
+9) لا تستخرج «العمر الشخصي» للمستخدم كفلتر عندما يكون المستخدم يحكي عن عمره هو؛ المطلوب هو عمر الشخص الذي يريد البحث عنه. استخدم سياق الجملة لفهم المقصود.
+10) الحالة الاجتماعية: عزباء/عازبة/عزب = بحسب الجنس، مطلقة/مطلق، أرملة/أرمل، متزوجة/متزوج.
+11) occupation يستخرج فقط إذا ذُكر العمل/المهنة بوضوح.
+12) city يستخرج فقط إذا كانت مدينة محددة مذكورة بوضوح، ولا تستعمل اسم المحافظة كمدينة تلقائياً.
+13) أعد JSON مطابقاً للـSchema فقط.
+
+أمثلة:
+- «بنت من دمشق بين 22 و28» -> gender=female, province=دمشق, age_min=22, age_max=28
+- «بنت دمشق عمرها 25» -> gender=female, province=دمشق, age_min=25, age_max=25
+- «بدي صبية من الشام من 22 لـ27» -> gender=female, province=دمشق, age_min=22, age_max=27
+- «بدي عريس من حلب حوالي 30» -> gender=male, province=حلب, age_min=30, age_max=30
+- «دمشق - جرمانا بنت 23» -> province=دمشق, city=جرمانا, gender=female, age_min=23, age_max=23
 """
 
 
@@ -170,6 +203,7 @@ class AIService:
                 temperature=0,
                 response_mime_type="application/json",
                 response_schema=ProfileExtraction,
+                automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
             ),
         )
         return ProfileExtraction.model_validate_json(response.text)
@@ -199,17 +233,14 @@ class AIService:
         client = self._get_client()
         from google.genai import types
 
-        prompt = """
-استخرج فلاتر البحث فقط من طلب المستخدم العربي. لا تخترع أي فلتر غير مذكور.
-الجنس male/female، المحافظة، المدينة، الحد الأدنى والأقصى للعمر، الحالة الاجتماعية، المهنة.
-"""
         response = client.models.generate_content(
             model=self.model,
-            contents=f"{prompt}\n\nطلب المستخدم:\n{raw_text}",
+            contents=f"{SEARCH_FILTER_INSTRUCTIONS}\n\nطلب المستخدم:\n{raw_text}",
             config=types.GenerateContentConfig(
                 temperature=0,
                 response_mime_type="application/json",
                 response_schema=SearchFilterExtraction,
+                automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
             ),
         )
         return SearchFilterExtraction.model_validate_json(response.text)
@@ -234,8 +265,8 @@ def basic_profile_extraction(raw_text: str, photo_file_id: str | None = None) ->
 
     age = None
     age_patterns = (
-        r"(?:عمري|عمري أنا|عمرها|عمره|العمر|عمر)\s*[:=-]?\s*(\d{2})",
-        r"(?<!\d)(\d{2})(?:\s*)(?:سنة|سنين|عام)",
+        r"(?:عمري|عمري أنا|عمرها|عمره|عمرا|العمر|عمر|بعمر)\s*[:=-]?\s*(\d{1,3})",
+        r"(?<!\d)(\d{2,3})(?:\s*)(?:سنة|سنين|عام)",
     )
     for pattern in age_patterns:
         match = re.search(pattern, normalized)
@@ -348,7 +379,7 @@ def basic_profile_extraction(raw_text: str, photo_file_id: str | None = None) ->
         if any(marker in line for marker in req_markers):
             requirement = line.split(":", 1)[1].strip() if ":" in line else line
     if requirement is None:
-        requirement_match = re.search(r"((?:بدي|بدها|بده)\s+(?:شب|شاب|بنت|شابة)\b.+)", normalized, re.I)
+        requirement_match = re.search(r"((?:بدي|بدها|بده)\s+(?:شب|شاب|بنت|شابة|عروس|عريس)\b.+)", normalized, re.I)
         if requirement_match:
             requirement = requirement_match.group(1).strip()
 
