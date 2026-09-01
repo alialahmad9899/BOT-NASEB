@@ -33,6 +33,7 @@ from app.handlers.payment import (
     stale_payment_callback,
 )
 from app.handlers.start import start_command
+from app.services.admin_meta import backfill_meta
 from app.services.gemini_runtime import GeminiAIService
 from app.services.runtime import user_message_for_error
 
@@ -48,8 +49,15 @@ def build_application(settings: Settings) -> Application:
     engine = build_engine(settings.database_url)
     if engine is not None:
         Base.metadata.create_all(engine)
+        session_factory = build_session_factory(engine)
+        if session_factory is not None:
+            # Add only missing Admin V2 metadata rows; never alter/delete existing profiles/orders.
+            with session_factory() as session:
+                backfill_meta(session)
+    else:
+        session_factory = None
     application.bot_data["engine"] = engine
-    application.bot_data["session_factory"] = build_session_factory(engine)
+    application.bot_data["session_factory"] = session_factory
     application.bot_data["ai_service"] = GeminiAIService(settings.ai_api_key, settings.ai_model)
 
     admin_conversation = ConversationHandler(
