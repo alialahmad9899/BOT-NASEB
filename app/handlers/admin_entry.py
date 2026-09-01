@@ -19,6 +19,8 @@ from app.database.models import Order
 from app.database.repositories import OrderRepository, ProfileRepository
 from app.handlers import admin_router
 from app.services.admin_meta import create_backup, get_order_meta, get_profile_meta, list_audit_logs, log_admin_action, metrics, payment_method, service_price
+from app.services.profile_quality import score_profile
+from app.services.profiles import ProfileDraft
 
 ADMIN_V2_INPUT = admin_router.ADMIN_V2_INPUT
 END = ConversationHandler.END
@@ -103,6 +105,32 @@ async def _settings_screen(update: Any, context: Any) -> int:
     return END
 
 
+async def _incomplete_profiles_screen(update: Any, context: Any) -> int:
+    with _session(context) as session:
+        stmt = (
+            select(Profile, ProfileAdminMeta)
+            .join(ProfileAdminMeta, ProfileAdminMeta.profile_id == Profile.id)
+            .where(ProfileAdminMeta.publication_status == "review")
+            .order_by(desc(Profile.updated_at))
+            .limit(15)
+        )
+        rows = list(session.execute(stmt).all())
+    if not rows:
+        await update.callback_query.edit_message_text(
+            "⚠️ بحاجة لاستكمال\n\n✅ ما في إعلانات معلّقة للمراجعة حالياً.",
+            reply_markup=admin_router.admin_v2._dashboard_keyboard(),
+        )
+        return END
+    text_body = "⚠️ إعلانات بحاجة لاستكمال\n\n"
+    buttons = []
+    for profile, meta in rows:
+        text_body += f"📌 {profile.request_number} — {profile.name or 'بدون اسم'} — {profile.age} سنة — {profile.residence}\n⭐ الجودة: {meta.quality_score}/100\n\n"
+        buttons.append([InlineKeyboardButton(f"📌 فتح {profile.request_number}", callback_data=f"admin:v2:profile:{profile.request_number}")])
+    buttons.append([InlineKeyboardButton("⬅️ لوحة الأدمن", callback_data="admin:v2:dashboard")])
+    await update.callback_query.edit_message_text(text_body, reply_markup=InlineKeyboardMarkup(buttons))
+    return END
+
+
 async def _extend_reservation(update: Any, context: Any, number: int, days: int) -> int:
     if not _manager(update, context):
         await update.callback_query.answer("❌ هالعملية للمديرين فقط.", show_alert=True)
@@ -145,8 +173,25 @@ async def _bulk_delete_pending_orders_confirm(update: Any, context: Any) -> int:
     return ADMIN_V2_INPUT
 
 
+async def _bulk_delete_pending_orders_execute(update: Any, context: Any) -> int:
+    if not _manager(update, context):
+        await update.callback_query.answer("❌ للمديرين فقط.", show_alert=True)
+        return END
+    with _session(context) as session:
+        create_backup(session, int(update.effective_user.id), "قبل حذف كل طلبات التواصل المعلّقة")
+        count = OrderRepository(session).delete_pending()
+        log_admin_action(session, int(update.effective_user.id), "bulk_pending_order_delete", "order", None, {"count": count})
+        session.commit()
+    context.user_data.clear()
+    await update.callback_query.edit_message_text(
+        f"✅ تم حذف {count} طلبات تواصل معلّقة بعد إنشاء نسخة احتياطية.",
+        reply_markup=admin_router.admin_v2._dashboard_keyboard(),
+    )
+    return END
+
+
 async def _bulk_delete_pending_orders(update: Any, context: Any) -> int:
-    if update.effective_message.text.strip() != "حذف كل الطلبات المعلّقة":
+    if (update.effective_message.text or "").strip() != "حذف كل الطلبات المعلّقة":
         await update.effective_message.reply_text("❌ لم يتم الحذف.", reply_markup=admin_router.admin_v2._back_keyboard())
         return ADMIN_V2_INPUT
     if not _manager(update, context):
@@ -179,13 +224,15 @@ async def admin_callback(update: Any, context: Any) -> int:
         return await _audit_screen(update, context)
     if data == "admin:v2:settings":
         return await _settings_screen(update, context)
+    if data == "admin:v2:profiles:0:incomplete":
+        return await _incomplete_profiles_screen(update, context)
     match = re.fullmatch(r"admin:v2:reservation:extend:(\d+):(\d+)", data)
     if match:
         return await _extend_reservation(update, context, int(match.group(1)), int(match.group(2)))
     if data == "admin:orders:delete:pending":
         return await _bulk_delete_pending_orders_confirm(update, context)
-    if data.startswith("admin:orders:delete:pending:confirm"):
-        return await _bulk_delete_pending_orders_confirm(update, context)
+    if data == "admin:orders:delete:pending:confirm":
+        return await _bulk_delete_pending_orders_execute(update, context)
     return await admin_router.admin_callback(update, context)
 
 
