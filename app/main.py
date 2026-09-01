@@ -18,18 +18,9 @@ from telegram.ext import Application, CallbackQueryHandler, CommandHandler, Conv
 from app.config import Settings
 from app.database.connection import build_engine, build_session_factory
 from app.database.models import Base
-from app.handlers.admin import (
-    ADD_EDIT,
-    ADD_RAW,
-    DELETE_REQUEST,
-    DISABLE_REQUEST,
-    EDIT_FIELDS,
-    EDIT_REQUEST,
-    SEARCH_TEXT,
-    admin_callback,
-    admin_photo,
-    admin_text,
-)
+from app.database import admin_models as _admin_models  # noqa: F401 - registers additive Admin V2 tables
+from app.handlers.admin import ADD_EDIT, ADD_RAW, DELETE_REQUEST, DISABLE_REQUEST, EDIT_FIELDS, EDIT_REQUEST, SEARCH_TEXT
+from app.handlers.admin_entry import ADMIN_V2_INPUT, admin_callback, admin_photo, admin_text
 from app.handlers.client import SEARCH_CONFIRM, SEARCH_TEXT as CLIENT_SEARCH_TEXT, client_callback, client_text
 from app.handlers.payment import (
     WHATSAPP_CONFIRM,
@@ -42,6 +33,7 @@ from app.handlers.payment import (
     stale_payment_callback,
 )
 from app.handlers.start import start_command
+from app.services.admin_meta import backfill_meta
 from app.services.gemini_runtime import GeminiAIService
 from app.services.runtime import user_message_for_error
 
@@ -57,8 +49,15 @@ def build_application(settings: Settings) -> Application:
     engine = build_engine(settings.database_url)
     if engine is not None:
         Base.metadata.create_all(engine)
+        session_factory = build_session_factory(engine)
+        if session_factory is not None:
+            # Add only missing Admin V2 metadata rows; never alter/delete existing profiles/orders.
+            with session_factory() as session:
+                backfill_meta(session)
+    else:
+        session_factory = None
     application.bot_data["engine"] = engine
-    application.bot_data["session_factory"] = build_session_factory(engine)
+    application.bot_data["session_factory"] = session_factory
     application.bot_data["ai_service"] = GeminiAIService(settings.ai_api_key, settings.ai_model)
 
     admin_conversation = ConversationHandler(
@@ -71,6 +70,7 @@ def build_application(settings: Settings) -> Application:
             EDIT_FIELDS: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text), CallbackQueryHandler(admin_callback, pattern=r"^admin:")],
             DISABLE_REQUEST: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text), CallbackQueryHandler(admin_callback, pattern=r"^admin:")],
             DELETE_REQUEST: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text), CallbackQueryHandler(admin_callback, pattern=r"^admin:")],
+            ADMIN_V2_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text), MessageHandler(filters.PHOTO, admin_photo), CallbackQueryHandler(admin_callback, pattern=r"^admin:")],
         },
         fallbacks=[CommandHandler("cancel", cancel_command)],
         allow_reentry=True,

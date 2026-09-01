@@ -13,6 +13,12 @@ services:
         sync: false
       - key: ADMIN_USER_IDS
         sync: false
+      - key: ADMIN_OWNER_IDS
+        sync: false
+      - key: ADMIN_MANAGER_IDS
+        sync: false
+      - key: ADMIN_VIEWER_IDS
+        sync: false
       - key: AI_API_KEY
         sync: false
       - key: AI_MODEL
