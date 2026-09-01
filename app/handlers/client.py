@@ -13,6 +13,7 @@ from app.keyboards.client import (
     client_orders_keyboard,
     client_payment_keyboard,
     client_profile_keyboard,
+    client_results_history_keyboard,
     client_results_keyboard,
     client_search_confirm_keyboard,
     client_search_keyboard,
@@ -85,6 +86,16 @@ def _filters_summary(filters: ProfileFilters) -> str:
     return "\n".join(lines)
 
 
+def _result_text(rows) -> str:
+    return "💗 لقينا {} عرض مناسب مبدئياً.\n\n{}".format(
+        len(rows),
+        "\n".join(
+            f"📌 طلب {row.request_number} — {row.age} سنة — {row.residence} — {('🔒 محجوز' if row.status == 'reserved' else '✅ متاح')}"
+            for row in rows
+        ),
+    )
+
+
 async def client_callback(update: Any, context: Any) -> int:
     query = update.callback_query
     await query.answer()
@@ -114,6 +125,8 @@ async def client_callback(update: Any, context: Any) -> int:
             context.user_data["search_target_gender"] = target_gender
         await query.edit_message_text(_search_prompt(target_gender), reply_markup=client_search_keyboard())
         return SEARCH_TEXT
+    if data == "client:results":
+        return await _show_saved_results(update, context)
     if data == "client:list":
         context.user_data.clear()
         await _show_latest(update, context)
@@ -199,17 +212,29 @@ async def _execute_pending_search(update: Any, context: Any) -> int:
         return END
     with _session(context) as session:
         rows = ProfileRepository(session).search(filters)
+    request_numbers = [row.request_number for row in rows]
     context.user_data.clear()
     if not rows:
         await update.callback_query.edit_message_text("🔎 ما لقينا عروض مطابقة لهالمواصفات. فيك تخفف شرط أو توسّع العمر أو مكان السكن.", reply_markup=client_no_results_keyboard())
         return END
-    await update.callback_query.edit_message_text(
-        f"💗 لقينا {len(rows)} عرض مناسب مبدئياً.\n\n" + "\n".join(
-            f"📌 طلب {row.request_number} — {row.age} سنة — {row.residence} — {('🔒 محجوز' if row.status == 'reserved' else '✅ متاح')}"
-            for row in rows
-        ),
-        reply_markup=client_results_keyboard([row.request_number for row in rows]),
-    )
+    context.user_data["last_result_numbers"] = request_numbers
+    await update.callback_query.edit_message_text(_result_text(rows), reply_markup=client_results_keyboard(request_numbers))
+    return END
+
+
+async def _show_saved_results(update: Any, context: Any) -> int:
+    numbers = context.user_data.get("last_result_numbers") or []
+    if not numbers:
+        await update.callback_query.edit_message_text("🔎 ما في نتائج محفوظة حالياً. بلّش بحث جديد.", reply_markup=client_main_keyboard())
+        return END
+    with _session(context) as session:
+        rows = [row for number in numbers if (row := ProfileRepository(session).get(number)) is not None and row.status != "inactive"]
+    if not rows:
+        context.user_data.clear()
+        await update.callback_query.edit_message_text("🔎 ما عاد في نتائج متاحة من البحث السابق.", reply_markup=client_main_keyboard())
+        return END
+    context.user_data["last_result_numbers"] = [row.request_number for row in rows]
+    await update.callback_query.edit_message_text(_result_text(rows), reply_markup=client_results_history_keyboard())
     return END
 
 
@@ -219,6 +244,7 @@ async def _show_latest(update: Any, context: Any) -> None:
     if not rows:
         await update.callback_query.edit_message_text("📋 ما في عروض متاحة حالياً.", reply_markup=client_main_keyboard())
         return
+    context.user_data["last_result_numbers"] = [row.request_number for row in rows]
     await update.callback_query.edit_message_text(
         "📋 أحدث العروض:\n\n" + "\n".join(
             f"📌 طلب {row.request_number} — {row.age} سنة — {row.residence} — {('🔒 محجوز' if row.status == 'reserved' else '✅ متاح')}"
@@ -287,7 +313,8 @@ async def _show_profile(update: Any, context: Any, request_number: int | None) -
         await update.callback_query.edit_message_text("❌ ما عاد هالعرض متاح.", reply_markup=client_main_keyboard())
         return END
     masked = mask_phone(contact.phone) if contact and contact.phone else None
-    await update.callback_query.edit_message_text(format_client_profile(public, masked_phone=masked), reply_markup=client_profile_keyboard(request_number, public.get("status", "active")))
+    has_results = bool(context.user_data.get("last_result_numbers"))
+    await update.callback_query.edit_message_text(format_client_profile(public, masked_phone=masked), reply_markup=client_profile_keyboard(request_number, public.get("status", "active"), has_results=has_results))
     return END
 
 
@@ -309,7 +336,6 @@ async def _create_contact_order(update: Any, context: Any, request_number: int |
             return END
         session.commit()
         number = order.order_number
-        status = order.status
     context.user_data.clear()
     context.user_data["client_flow"] = "payment"
     context.user_data["pending_order_number"] = number
