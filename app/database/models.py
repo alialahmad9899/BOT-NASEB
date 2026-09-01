@@ -28,9 +28,14 @@ class Profile(Base):
     province: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
     city: Mapped[str | None] = mapped_column(String(120), index=True)
     marital_status: Mapped[str | None] = mapped_column(String(80), index=True)
+    children_count: Mapped[int | None] = mapped_column(Integer, index=True)
     occupation: Mapped[str | None] = mapped_column(String(160), index=True)
+    education: Mapped[str | None] = mapped_column(String(200))
+    nationality: Mapped[str | None] = mapped_column(String(100))
+    religion: Mapped[str | None] = mapped_column(String(100))
     height: Mapped[float | None] = mapped_column(Numeric(5, 2))
     weight: Mapped[float | None] = mapped_column(Numeric(6, 2))
+    appearance: Mapped[str | None] = mapped_column(Text)
     description: Mapped[str | None] = mapped_column(Text)
     partner_requirements: Mapped[str | None] = mapped_column(Text)
     photo_file_id: Mapped[str | None] = mapped_column(String(255))
@@ -38,6 +43,7 @@ class Profile(Base):
 
     __table_args__ = (
         CheckConstraint("age >= 18 AND age <= 100", name="ck_profile_age_range"),
+        CheckConstraint("children_count IS NULL OR children_count >= 0", name="ck_profile_children_count_nonnegative"),
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
