@@ -1,89 +1,12 @@
-"""Profile validation, draft handling, and public/admin presentation."""
+"""Marriage-profile normalization, formatting, and validation helpers."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
-from app.services.ai import ProfileExtraction
 
-
-@dataclass(frozen=True)
-class ProfileDraft:
-    public_data: dict[str, Any] = field(default_factory=dict)
-    private_contact_data: dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class ProfileValidation:
-    missing_fields: tuple[str, ...] = ()
-    errors: tuple[str, ...] = ()
-
-    @property
-    def ok(self) -> bool:
-        return not self.missing_fields and not self.errors
-
-
-NON_SINGLE_STATUSES = {"متزوج", "متزوجة", "مطلق", "مطلقة", "أرمل", "أرملة", "منفصل", "منفصلة"}
-
-
-def validate_profile_extraction(extraction: ProfileExtraction, private_contact_data: dict[str, Any]) -> ProfileValidation:
-    missing: list[str] = []
-    if extraction.gender not in {"male", "female"}:
-        missing.append("gender")
-    if extraction.age is None or not 18 <= extraction.age <= 100:
-        missing.append("age")
-    if not extraction.residence:
-        missing.append("residence")
-    if not any(str(private_contact_data.get(key) or "").strip() for key in ("phone", "telegram_username", "whatsapp")):
-        missing.append("contact")
-    if (extraction.marital_status or "").strip() in NON_SINGLE_STATUSES and extraction.children_count is None:
-        missing.append("children_count")
-    errors: list[str] = []
-    if extraction.children_count is not None and extraction.children_count < 0:
-        errors.append("عدد الأولاد لا يمكن أن يكون سالباً")
-    return ProfileValidation(tuple(dict.fromkeys(missing)), tuple(errors))
-
-
-def extraction_to_draft(extraction: ProfileExtraction) -> ProfileDraft:
-    public = extraction.model_dump()
-    private = {key: public.pop(key, None) for key in ("phone", "telegram_username", "whatsapp")}
-    return ProfileDraft(public_data=public, private_contact_data=private)
-
-
-def apply_text_edits(draft: ProfileDraft, text: str) -> ProfileDraft:
-    public = dict(draft.public_data)
-    private = dict(draft.private_contact_data)
-    aliases = {
-        "النوع": "gender", "الجنس": "gender", "الاسم": "name", "العمر": "age",
-        "السكن": "residence", "مكان السكن": "residence", "الإقامة": "residence", "مكان الإقامة": "residence",
-        "الحالة": "marital_status", "الحالة الاجتماعية": "marital_status",
-        "عدد الأولاد": "children_count", "الأولاد": "children_count", "الاولاد": "children_count",
-        "المهنة": "occupation", "العمل": "occupation", "التعليم": "education", "الدراسة": "education",
-        "المستوى التعليمي": "education", "الشكل": "appearance", "المظهر": "appearance",
-        "الطول": "height", "الوزن": "weight", "المطلوب": "partner_requirements",
-        "مواصفات الشريك المطلوب": "partner_requirements", "الهاتف": "phone", "رقم الهاتف": "phone",
-        "الواتساب": "whatsapp", "واتساب": "whatsapp", "تلغرام": "telegram_username", "telegram": "telegram_username",
-    }
-    for line in text.splitlines():
-        if "=" not in line:
-            continue
-        raw_key, raw_value = [part.strip() for part in line.split("=", 1)]
-        key = aliases.get(raw_key.lower(), raw_key)
-        value: Any = raw_value
-        if key == "gender": value = normalize_gender(raw_value)
-        elif key == "children_count":
-            try: value = int(normalize_digits(raw_value))
-            except ValueError: continue
-        elif key == "age":
-            try: value = int(normalize_digits(raw_value))
-            except ValueError: continue
-        elif key in {"height", "weight"}:
-            try: value = float(normalize_digits(raw_value))
-            except ValueError: continue
-        if key in {"phone", "whatsapp", "telegram_username"}: private[key] = value
-        else: public[key] = value
-    return ProfileDraft(public_data=public, private_contact_data=private)
+NON_SINGLE_STATUSES = {"مطلقة", "مطلق", "أرملة", "أرمل", "متزوجة", "متزوج", "منفصلة", "منفصل"}
 
 
 def normalize_digits(value: str) -> str:
@@ -179,12 +102,100 @@ def format_admin_profile(profile: dict) -> str:
     return text
 
 
-def format_draft_preview(draft: ProfileDraft, request_number: int | None = None) -> str:
+def format_publishable_draft_preview(draft: "ProfileDraft", request_number: int | None = None) -> str:
     public = dict(draft.public_data)
-    private = draft.private_contact_data
     public["request_number"] = request_number
-    text = format_marriage_post(public)
-    secret = _contact_secret({**public, **private})
-    if secret: text += f"\n\n🔐 بيانات التواصل للأدمن فقط:\n{secret}"
-    else: text += "\n\n🔐 بيانات التواصل للأدمن فقط:\nغير موجودة"
-    return text
+    return format_marriage_post(public)
+
+
+def format_admin_draft_contact(draft: "ProfileDraft") -> str:
+    secret = _contact_secret(draft.private_contact_data)
+    return f"🔐 بيانات التواصل للأدمن فقط:\n{secret}" if secret else "🔐 بيانات التواصل للأدمن فقط:\nغير موجودة"
+
+
+def format_draft_preview(draft: "ProfileDraft", request_number: int | None = None) -> str:
+    return format_publishable_draft_preview(draft, request_number) + "\n\n" + format_admin_draft_contact(draft)
+
+
+@dataclass(frozen=True)
+class ProfileDraft:
+    public_data: dict
+    private_contact_data: dict
+
+
+def extraction_to_draft(extraction: Any) -> ProfileDraft:
+    public = {
+        "gender": extraction.gender,
+        "name": extraction.name,
+        "age": extraction.age,
+        "residence": extraction.residence,
+        "marital_status": extraction.marital_status,
+        "children_count": extraction.children_count,
+        "occupation": extraction.occupation,
+        "education": extraction.education,
+        "height": extraction.height,
+        "weight": extraction.weight,
+        "appearance": extraction.appearance,
+        "partner_requirements": extraction.partner_requirements,
+        "photo_file_id": extraction.photo_file_id,
+    }
+    private = {
+        "phone": extraction.phone,
+        "telegram_username": extraction.telegram_username,
+        "whatsapp": extraction.whatsapp,
+    }
+    return ProfileDraft(public_data=public, private_contact_data=private)
+
+
+def apply_text_edits(draft: ProfileDraft, text: str) -> ProfileDraft:
+    public = dict(draft.public_data)
+    private = dict(draft.private_contact_data)
+    for line in text.splitlines():
+        if "=" not in line:
+            continue
+        key, value = [part.strip() for part in line.split("=", 1)]
+        if not value:
+            continue
+        mapping = {
+            "النوع": "gender", "الاسم": "name", "العمر": "age", "مكان السكن": "residence",
+            "الحالة الاجتماعية": "marital_status", "عدد الأولاد": "children_count", "العمل": "occupation",
+            "التعليم": "education", "المستوى التعليمي": "education", "الطول": "height", "الوزن": "weight",
+            "الشكل": "appearance", "المطلوب": "partner_requirements", "مواصفات الشريك المطلوب": "partner_requirements",
+            "رقم الهاتف": "phone", "الهاتف": "phone", "واتساب": "whatsapp", "Telegram": "telegram_username",
+        }
+        target = mapping.get(key, mapping.get(key.strip().lower()))
+        if not target:
+            continue
+        if target in {"age", "children_count"}:
+            try: value = int(normalize_digits(value))
+            except ValueError: continue
+        elif target in {"height", "weight"}:
+            try: value = float(normalize_digits(value))
+            except ValueError: continue
+        if target in {"phone", "whatsapp", "telegram_username"}:
+            private[target] = value
+        else:
+            public[target] = value
+    return ProfileDraft(public, private)
+
+
+@dataclass(frozen=True)
+class ProfileValidation:
+    missing_fields: tuple[str, ...]
+    errors: tuple[str, ...]
+    @property
+    def ok(self) -> bool:
+        return not self.missing_fields and not self.errors
+
+
+def validate_profile_extraction(extraction: Any, private_contact_data: dict) -> ProfileValidation:
+    missing = []
+    if extraction.gender not in {"male", "female"}: missing.append("gender")
+    if extraction.age is None: missing.append("age")
+    if not extraction.residence: missing.append("residence")
+    if not (private_contact_data.get("phone") or private_contact_data.get("telegram_username") or private_contact_data.get("whatsapp")): missing.append("contact")
+    if extraction.marital_status in NON_SINGLE_STATUSES and extraction.children_count is None: missing.append("children_count")
+    errors = []
+    if extraction.age is not None and not 18 <= extraction.age <= 100: errors.append("العمر يجب أن يكون بين 18 و100 سنة.")
+    if extraction.children_count is not None and extraction.children_count < 0: errors.append("عدد الأولاد لا يمكن أن يكون سالباً.")
+    return ProfileValidation(tuple(missing), tuple(errors))
