@@ -3,9 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
-from sqlalchemy import delete, desc, func, select
+from sqlalchemy import delete, desc, func, or_, select
 from sqlalchemy.orm import Session
 
+from app.database.admin_models import ProfileAdminMeta
 from app.database.models import Order, Profile, ProfileContact
 from app.services.profiles import ProfileDraft
 
@@ -72,7 +73,12 @@ class ProfileRepository:
 
     def get_public(self, request_number: int) -> dict | None:
         profile = self.get(request_number)
-        return profile_to_dict(profile) if profile else None
+        if profile is None or profile.status == "inactive":
+            return None
+        meta = self.session.get(ProfileAdminMeta, profile.id)
+        if meta is not None and meta.publication_status not in {"ready", "published"}:
+            return None
+        return profile_to_dict(profile)
 
     def get_with_contact(self, request_number: int) -> dict | None:
         profile = self.get(request_number)
@@ -86,16 +92,27 @@ class ProfileRepository:
             return None
         return self.session.scalar(select(ProfileContact).where(ProfileContact.profile_id == profile.id))
 
+    def _visible_public(self, stmt):
+        """Only ready/published profiles are public; missing metadata stays backward-compatible."""
+        return stmt.outerjoin(ProfileAdminMeta, ProfileAdminMeta.profile_id == Profile.id).where(
+            or_(
+                ProfileAdminMeta.profile_id.is_(None),
+                ProfileAdminMeta.publication_status.in_(["ready", "published"]),
+            )
+        )
+
     def latest(self, limit: int = 20, include_inactive: bool = False) -> list[Profile]:
         stmt = select(Profile)
         if not include_inactive:
             stmt = stmt.where(Profile.status.in_(["active", "reserved"]))
+            stmt = self._visible_public(stmt)
         return list(self.session.scalars(stmt.order_by(desc(Profile.created_at)).limit(max(1, min(limit, 50)))).all())
 
     def search(self, filters: ProfileFilters, include_inactive: bool = False) -> list[Profile]:
         stmt = select(Profile)
         if not include_inactive:
             stmt = stmt.where(Profile.status.in_(["active", "reserved"]))
+            stmt = self._visible_public(stmt)
         if filters.gender:
             stmt = stmt.where(Profile.gender == filters.gender)
         if filters.residence:
@@ -297,7 +314,7 @@ def export_all_data(session: Session) -> dict:
         "order_number": o.order_number, "user_telegram_id": o.user_telegram_id,
         "profile_request_number": o.profile.request_number, "amount_usd": str(o.amount_usd),
         "payment_method": o.payment_method, "status": o.status, "transaction_id": o.transaction_id,
-        "notes": o.notes, "created_at": o.created_at.isoformat() if o.created_at else None,
+        "whatsapp": o.whatsapp, "notes": o.notes, "created_at": o.created_at.isoformat() if o.created_at else None,
         "updated_at": o.updated_at.isoformat() if o.updated_at else None,
     } for o in session.scalars(select(Order).order_by(Order.id)).all()]
     return {"profiles": profiles, "orders": orders}
