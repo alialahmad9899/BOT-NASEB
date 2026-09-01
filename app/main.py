@@ -30,9 +30,8 @@ from app.handlers.admin import (
     admin_photo,
     admin_text,
 )
-from app.handlers.client import PAYMENT_TX, SEARCH_TEXT as CLIENT_SEARCH_TEXT, client_callback, client_text
+from app.handlers.client import PAYMENT_TX, SEARCH_CONFIRM, SEARCH_TEXT as CLIENT_SEARCH_TEXT, client_callback, client_text
 from app.handlers.start import start_command
-from app.services.ai import AIService
 from app.services.gemini_runtime import GeminiAIService
 from app.services.runtime import user_message_for_error
 
@@ -71,6 +70,7 @@ def build_application(settings: Settings) -> Application:
         entry_points=[CallbackQueryHandler(client_callback, pattern=r"^client:")],
         states={
             CLIENT_SEARCH_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, client_text), CallbackQueryHandler(client_callback, pattern=r"^client:")],
+            SEARCH_CONFIRM: [CallbackQueryHandler(client_callback, pattern=r"^client:")],
             PAYMENT_TX: [MessageHandler(filters.TEXT & ~filters.COMMAND, client_text), CallbackQueryHandler(client_callback, pattern=r"^client:")],
         },
         fallbacks=[CommandHandler("cancel", cancel_command)],
