@@ -40,9 +40,17 @@ def validate_profile_extraction(
     )
     if not has_contact:
         missing.append("contact")
+
+    marital = (extraction.marital_status or "").strip()
+    non_single_statuses = {"متزوج", "متزوجة", "مطلق", "مطلقة", "أرمل", "أرملة"}
+    if marital in non_single_statuses and extraction.children_count is None:
+        missing.append("children_count")
+
     errors: list[str] = []
     if extraction.age is not None and extraction.age < 18:
         errors.append("العمر يجب أن يكون 18 سنة أو أكثر")
+    if extraction.children_count is not None and extraction.children_count < 0:
+        errors.append("عدد الأولاد لا يمكن أن يكون رقماً سالباً")
     return ProfileValidation(tuple(missing), tuple(errors))
 
 
@@ -63,8 +71,11 @@ def apply_text_edits(draft: ProfileDraft, text: str) -> ProfileDraft:
         "النوع": "gender", "الجنس": "gender", "الاسم": "name", "العمر": "age",
         "المحافظة": "province", "السكن": "city", "المدينة": "city",
         "الحالة": "marital_status", "الحالة الاجتماعية": "marital_status",
-        "المهنة": "occupation", "العمل": "occupation", "الطول": "height", "الوزن": "weight",
-        "المواصفات": "description", "المطلوب": "partner_requirements",
+        "عدد الأولاد": "children_count", "الأولاد": "children_count", "الاولاد": "children_count",
+        "المهنة": "occupation", "العمل": "occupation", "التعليم": "education",
+        "المستوى التعليمي": "education", "الدراسة": "education", "الجنسية": "nationality", "الديانة": "religion", "الدين": "religion",
+        "الشكل": "appearance", "المظهر": "appearance", "الطول": "height", "الوزن": "weight",
+        "المواصفات": "description", "المواصفات الشخصية": "description", "المطلوب": "partner_requirements",
         "مواصفات الشريك المطلوب": "partner_requirements", "الهاتف": "phone",
         "رقم الهاتف": "phone", "الواتساب": "whatsapp", "تلغرام": "telegram_username",
         "telegram": "telegram_username", "whatsapp": "whatsapp",
@@ -77,7 +88,13 @@ def apply_text_edits(draft: ProfileDraft, text: str) -> ProfileDraft:
         value: Any = raw_value
         if key == "gender":
             value = normalize_gender(raw_value)
-        elif key in {"age"}:
+        elif key == "children_count":
+            digits = normalize_digits(raw_value)
+            try:
+                value = int(digits)
+            except ValueError:
+                continue
+        elif key == "age":
             try:
                 value = int(normalize_digits(raw_value))
             except ValueError:
@@ -101,9 +118,9 @@ def normalize_digits(value: str) -> str:
 
 def normalize_gender(value: str) -> str:
     v = value.strip().lower()
-    if any(token in v for token in ("أنثى", "انثى", "بنت", "عروس", "female")):
+    if any(token in v for token in ("أنثى", "انثى", "بنت", "عروس", "صبية", "female")):
         return "female"
-    if any(token in v for token in ("ذكر", "شاب", "عريس", "male")):
+    if any(token in v for token in ("ذكر", "شاب", "عريس", "رجل", "male")):
         return "male"
     return value.strip()
 
@@ -112,24 +129,79 @@ def _gender_label(gender: str | None) -> str:
     return "👩" if gender == "female" else "👨" if gender == "male" else "👤"
 
 
+def _location_label(profile: dict) -> str:
+    province = str(profile.get("province") or "—").strip()
+    city = str(profile.get("city") or "").strip()
+    if not city or city == province:
+        return province
+    return f"{province} - {city}"
+
+
+def _children_label(value: Any) -> str:
+    if value is None:
+        return "—"
+    try:
+        count = int(value)
+    except (TypeError, ValueError):
+        return str(value)
+    if count == 0:
+        return "لا يوجد"
+    if count == 1:
+        return "ولد واحد"
+    if count == 2:
+        return "ولدان"
+    if count in {3, 4, 5, 6, 7, 8, 9, 10}:
+        return f"{count} أولاد"
+    return str(count)
+
+
+def _format_contact_secret(profile: dict) -> str:
+    contact_lines = []
+    if profile.get("phone"):
+        contact_lines.append(f"📱 الهاتف: {profile['phone']}")
+    if profile.get("whatsapp"):
+        contact_lines.append(f"🟢 واتساب: {profile['whatsapp']}")
+    if profile.get("telegram_username"):
+        contact_lines.append(f"✈️ Telegram: @{str(profile['telegram_username']).lstrip('@')}")
+    return "\n".join(contact_lines)
+
+
 def format_client_profile(profile: dict) -> str:
     lines = [
-        "💗 عرض زواج",
+        f"💍 طلب زواج (رقم الطلب: {profile.get('request_number', '—')})",
         "",
-        f"📌 رقم الطلب: {profile.get('request_number', '—')}",
-        f"{_gender_label(profile.get('gender'))} العمر: {profile.get('age', '—')}",
-        f"📍 السكن: {profile.get('province', '—')}" + (f" - {profile['city']}" if profile.get("city") else ""),
+        f"{_gender_label(profile.get('gender'))} الاسم: {profile.get('name') or '—'}",
+        f"🎂 العمر: {profile.get('age', '—')} سنة",
+        f"📍 الإقامة: سوريا - {_location_label(profile)}",
     ]
-    if profile.get("marital_status"):
-        lines.append(f"💍 الحالة الاجتماعية: {profile['marital_status']}")
     if profile.get("occupation"):
         lines.append(f"💼 العمل: {profile['occupation']}")
-    if profile.get("height"):
-        lines.append(f"📏 الطول: {profile['height']:g}")
-    if profile.get("weight"):
-        lines.append(f"⚖️ الوزن: {profile['weight']:g}")
-    if profile.get("description"):
-        lines.extend(["", f"💗 المواصفات:\n{profile['description']}"])
+    if profile.get("education"):
+        lines.append(f"📚 المستوى التعليمي: {profile['education']}")
+    if profile.get("marital_status"):
+        lines.append(f"💍 الحالة الاجتماعية: {profile['marital_status']}")
+    if profile.get("marital_status") in {"متزوج", "متزوجة", "مطلق", "مطلقة", "أرمل", "أرملة"}:
+        lines.append(f"👶 عدد الأولاد: {_children_label(profile.get('children_count'))}")
+    if profile.get("nationality") and profile.get("religion"):
+        lines.append(f"🪪 الجنسية والديانة: {profile['nationality']}، {profile['religion']}")
+    elif profile.get("nationality"):
+        lines.append(f"🪪 الجنسية: {profile['nationality']}")
+    elif profile.get("religion"):
+        lines.append(f"🕌 الديانة: {profile['religion']}")
+
+    personal_lines: list[str] = []
+    if profile.get("height") is not None:
+        personal_lines.append(f"📏 الطول: {profile['height']:g} سم")
+    if profile.get("weight") is not None:
+        personal_lines.append(f"⚖️ الوزن: {profile['weight']:g} كغم")
+    if profile.get("appearance"):
+        personal_lines.append(f"👤 الشكل: {profile['appearance']}")
+    if personal_lines:
+        lines.extend(["", "💗 المواصفات الشخصية:", *personal_lines])
+    elif profile.get("description"):
+        lines.extend(["", f"💗 المواصفات الشخصية:\n{profile['description']}"])
+    if profile.get("description") and personal_lines:
+        lines.append(f"📝 تفاصيل: {profile['description']}")
     if profile.get("partner_requirements"):
         lines.extend(["", f"💙 مواصفات الشريك المطلوب:\n{profile['partner_requirements']}"])
     lines.extend(["", "🔒 معلومات التواصل محفوظة لدى الصفحة."])
@@ -141,37 +213,43 @@ def format_admin_profile(profile: dict) -> str:
         "🔒 معلومات التواصل محفوظة لدى الصفحة.",
         "🔐 معلومات التواصل:",
     )
-    contact_lines = []
-    if profile.get("phone"):
-        contact_lines.append(f"📱 الهاتف: {profile['phone']}")
-    if profile.get("whatsapp"):
-        contact_lines.append(f"🟢 واتساب: {profile['whatsapp']}")
-    if profile.get("telegram_username"):
-        contact_lines.append(f"✈️ Telegram: @{str(profile['telegram_username']).lstrip('@')}")
+    contact_lines = _format_contact_secret(profile)
     if profile.get("status"):
-        contact_lines.append(f"📊 الحالة: {profile['status']}")
-    return text + ("\n" + "\n".join(contact_lines) if contact_lines else "")
+        contact_lines = (contact_lines + "\n" if contact_lines else "") + f"📊 الحالة: {profile['status']}"
+    return text + ("\n" + contact_lines if contact_lines else "")
 
 
 def format_draft_preview(draft: ProfileDraft) -> str:
     public = draft.public_data
     private = draft.private_contact_data
     lines = [
-        "📋 معاينة الإعلان",
+        "📋 معاينة عرض الزواج",
         "",
         f"{_gender_label(public.get('gender'))} الاسم: {public.get('name') or '—'}",
-        f"🎂 العمر: {public.get('age') or '—'}",
-        f"📍 المحافظة: {public.get('province') or '—'}",
-        f"🏙️ المدينة: {public.get('city') or '—'}",
-        f"💍 الحالة الاجتماعية: {public.get('marital_status') or '—'}",
+        f"🎂 العمر: {public.get('age') or '—'} سنة",
+        f"📍 الإقامة: سوريا - {_location_label(public)}",
         f"💼 العمل: {public.get('occupation') or '—'}",
-        f"📏 الطول: {public.get('height') if public.get('height') is not None else '—'}",
-        f"⚖️ الوزن: {public.get('weight') if public.get('weight') is not None else '—'}",
+        f"📚 المستوى التعليمي: {public.get('education') or '—'}",
+        f"💍 الحالة الاجتماعية: {public.get('marital_status') or '—'}",
     ]
+    if public.get("marital_status") in {"متزوج", "متزوجة", "مطلق", "مطلقة", "أرمل", "أرملة"}:
+        lines.append(f"👶 عدد الأولاد: {_children_label(public.get('children_count'))}")
+    if public.get("nationality") and public.get("religion"):
+        lines.append(f"🪪 الجنسية والديانة: {public['nationality']}، {public['religion']}")
+    elif public.get("nationality"):
+        lines.append(f"🪪 الجنسية: {public['nationality']}")
+    elif public.get("religion"):
+        lines.append(f"🕌 الديانة: {public['religion']}")
+    if public.get("height") is not None:
+        lines.append(f"📏 الطول: {public['height']:g} سم")
+    if public.get("weight") is not None:
+        lines.append(f"⚖️ الوزن: {public['weight']:g} كغم")
+    if public.get("appearance"):
+        lines.append(f"👤 الشكل: {public['appearance']}")
     if public.get("description"):
-        lines.extend(["", f"💗 المواصفات:\n{public['description']}"])
+        lines.extend(["", f"💗 المواصفات الشخصية:\n{public['description']}"])
     if public.get("partner_requirements"):
-        lines.extend(["", f"💙 المطلوب:\n{public['partner_requirements']}"])
+        lines.extend(["", f"💙 مواصفات الشريك المطلوب:\n{public['partner_requirements']}"])
     if private.get("phone"):
         masked = str(private["phone"])
         lines.append(f"\n🔐 رقم الهاتف: {masked[:3] + '****' + masked[-2:] if len(masked) >= 5 else '********'}")
