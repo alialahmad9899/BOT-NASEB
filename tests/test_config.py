@@ -10,3 +10,13 @@ def test_settings_requires_token_and_at_least_one_admin(monkeypatch):
     assert settings.telegram_bot_token == "token"
     assert settings.admin_user_ids == frozenset({123})
     assert settings.ai_model == "gemini-3.5-flash-lite"
+
+
+def test_settings_migrates_legacy_gemini_model(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setenv("ADMIN_USER_IDS", "123")
+    monkeypatch.setenv("AI_MODEL", "gemini-2.5-flash-lite")
+
+    settings = Settings.from_env()
+
+    assert settings.ai_model == "gemini-3.5-flash-lite"
