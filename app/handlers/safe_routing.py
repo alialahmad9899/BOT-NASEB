@@ -16,7 +16,7 @@ from app.handlers.safe_search import admin_search_text
 
 
 def _admin_order_list_requested(data: str) -> bool:
-    return data == "admin:orders" or data == "admin:v2:orders:0:pending" or data.startswith("admin:v2:orders:")
+    return data == "admin:orders" or data.startswith("admin:v2:orders:")
 
 
 def _admin_order_view_requested(data: str) -> bool:
@@ -31,12 +31,32 @@ def _client_order_view_requested(data: str) -> bool:
     return data.startswith("client:order:view:")
 
 
+def _admin_order_list_args(data: str) -> tuple[int, str]:
+    if data == "admin:orders":
+        return 0, "pending"
+    parts = data.split(":")
+    try:
+        return max(0, int(parts[3])), parts[4] if len(parts) > 4 else "pending"
+    except (ValueError, IndexError):
+        return 0, "pending"
+
+
+def _last_int(data: str) -> int | None:
+    try:
+        return int(data.rsplit(":", 1)[1])
+    except (ValueError, IndexError):
+        return None
+
+
 async def admin_callback_router(update: Any, context: Any) -> int:
     data = update.callback_query.data or ""
     if _admin_order_list_requested(data):
-        return await admin_orders_view(update, context)
+        page, filter_name = _admin_order_list_args(data)
+        return await admin_orders_view(update, context, page, filter_name)
     if _admin_order_view_requested(data):
-        return await admin_order_view(update, context)
+        number = _last_int(data)
+        if number is not None:
+            return await admin_order_view(update, context, number)
     return await admin_callback(update, context)
 
 
@@ -51,5 +71,7 @@ async def client_callback_router(update: Any, context: Any) -> int:
     if _client_order_list_requested(data):
         return await client_orders_view(update, context)
     if _client_order_view_requested(data):
-        return await client_order_view(update, context)
+        number = _last_int(data)
+        if number is not None:
+            return await client_order_view(update, context, number)
     return await client_callback(update, context)
