@@ -4,15 +4,16 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 
 def admin_main_keyboard() -> InlineKeyboardMarkup:
+    """Compact grouped admin home used by /start and legacy flows."""
     return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔎 الإعلانات والبحث", callback_data="admin:v2:section:ads")],
         [InlineKeyboardButton("➕ إضافة إعلان", callback_data="admin:v2:add")],
-        [InlineKeyboardButton("🔎 البحث الذكي", callback_data="admin:v2:search"), InlineKeyboardButton("📋 إدارة الإعلانات", callback_data="admin:v2:profiles:0:all")],
-        [InlineKeyboardButton("💳 طلبات التواصل", callback_data="admin:v2:orders:0:pending"), InlineKeyboardButton("🔒 الحجوزات", callback_data="admin:v2:reservations:0")],
-        [InlineKeyboardButton("🗃️ الأرشيف", callback_data="admin:v2:profiles:0:archived"), InlineKeyboardButton("⚠️ المعطلة", callback_data="admin:v2:profiles:0:inactive")],
-        [InlineKeyboardButton("⚠️ بحاجة لاستكمال", callback_data="admin:v2:profiles:0:incomplete")],
-        [InlineKeyboardButton("📊 التقارير", callback_data="admin:v2:reports"), InlineKeyboardButton("🧾 سجل العمليات", callback_data="admin:v2:audit")],
-        [InlineKeyboardButton("💾 النسخ الاحتياطية", callback_data="admin:v2:backups"), InlineKeyboardButton("⚙️ الإعدادات", callback_data="admin:v2:settings")],
-        [InlineKeyboardButton("🛑 منطقة الخطر", callback_data="admin:v2:danger")],
+        [InlineKeyboardButton("💳 الطلبات والتواصل", callback_data="admin:v2:section:orders")],
+        [InlineKeyboardButton("🔒 الحجوزات", callback_data="admin:v2:section:reservations")],
+        [InlineKeyboardButton("📣 النشر والمحتوى", callback_data="admin:v2:section:publishing")],
+        [InlineKeyboardButton("📊 التقارير والمتابعة", callback_data="admin:v2:section:reports")],
+        [InlineKeyboardButton("🛡️ الأمان والنسخ", callback_data="admin:v2:section:security")],
+        [InlineKeyboardButton("⚙️ الإعدادات", callback_data="admin:v2:section:settings")],
     ])
 
 
