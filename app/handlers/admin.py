@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from app.database.repositories import OrderRepository, ProfileFilters, ProfileRepository, export_all_data, profile_to_dict
+from app.database.repositories import OrderRepository, ProfileRepository, export_all_data, profile_to_dict
 from app.services.ai import AIExtractionError, AIService, ProfileExtraction, basic_profile_extraction
 from app.services.permissions import is_admin
 from app.services.profiles import apply_text_edits, extraction_to_draft, format_admin_profile, format_draft_preview, validate_profile_extraction
@@ -215,18 +215,12 @@ async def _parse_and_preview(update: Any, context: Any, raw_text: str, photo_fil
     ai: AIService = context.application.bot_data["ai_service"]
     deterministic = basic_profile_extraction(raw_text, photo_file_id)
     if not ai.is_configured:
-        await update.effective_message.reply_text(
-            "⚠️ Gemini حالياً مو مهيأ. ما رح أعتمد على تخمين محلي لتنظيم الإعلان.\n\nتأكد من AI_API_KEY على Render وبعدين أعد إرسال الإعلان.",
-            reply_markup=_back_to_admin_keyboard(),
-        )
+        await update.effective_message.reply_text("⚠️ Gemini حالياً مو مهيأ. ما رح أعتمد على تخمين محلي لتنظيم الإعلان.\n\nتأكد من AI_API_KEY على Render وبعدين أعد إرسال الإعلان.", reply_markup=_back_to_admin_keyboard())
         return ADD_RAW
     try:
         extraction = await AIService.resolve_profile_extraction(ai, raw_text, deterministic)
     except AIExtractionError:
-        await update.effective_message.reply_text(
-            "⚠️ ما قدرت أوصل لـGemini لتنظيم الإعلان.\n\nما تم حفظ أي بيانات. تأكد من مفتاح Gemini وإعداداته على Render، وبعدها أعد إرسال الإعلان.",
-            reply_markup=_back_to_admin_keyboard(),
-        )
+        await update.effective_message.reply_text("⚠️ ما قدرت أوصل لـGemini لتنظيم الإعلان.\n\nما تم حفظ أي بيانات. تأكد من مفتاح Gemini وإعداداته على Render، وبعدها أعد إرسال الإعلان.", reply_markup=_back_to_admin_keyboard())
         return ADD_RAW
     if photo_file_id and not extraction.photo_file_id:
         extraction = extraction.model_copy(update={"photo_file_id": photo_file_id})
@@ -311,22 +305,27 @@ async def _run_search(update: Any, context: Any, text: str, admin: bool) -> int:
         return END
 
     base = parse_search_text(text)
-    if not any((
-        base.gender, base.province, base.city, base.age_min, base.age_max,
-        base.marital_status, base.occupation, base.education,
-        base.children_min is not None, base.children_max is not None,
-    )):
-        await update.effective_message.reply_text("⚠️ ما قدرت أفهم فلاتر البحث. اكتب مثلاً: بنت من دمشق بين 22 و28 سنة عزباء", reply_markup=_back_to_admin_keyboard())
-        return END
-
     filters = base
     ai: AIService = context.application.bot_data["ai_service"]
+    ai_error = False
     if ai.is_configured:
         try:
             ai_result = await ai.parse_search_filters(text)
             filters = merge_filters(base, filters_from_ai(ai_result, text))
         except Exception:
+            ai_error = True
             filters = base
+
+    if not any((
+        filters.gender, filters.province, filters.city, filters.age_min, filters.age_max,
+        filters.marital_status, filters.occupation, filters.education,
+        filters.children_min is not None, filters.children_max is not None,
+    )):
+        message = "⚠️ ما قدرت أفهم فلاتر البحث. اكتب مثلاً: بنت من دمشق بين 22 و28 سنة عزباء"
+        if ai_error:
+            message += "\n\n⚠️ الذكاء الاصطناعي ما قدر يحلل الطلب حالياً."
+        await update.effective_message.reply_text(message, reply_markup=_back_to_admin_keyboard())
+        return SEARCH_TEXT
 
     with _session(context) as session:
         rows = ProfileRepository(session).search(filters, include_inactive=True)
