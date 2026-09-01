@@ -1,5 +1,3 @@
-"""Database repositories with direct SQL/ORM filtering."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -33,7 +31,11 @@ class ProfileRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
-    def create(self, draft: ProfileDraft) -> Profile:
+    def peek_next_request_number(self) -> int:
+        last_id = self.session.scalar(select(func.max(Profile.id))) or 0
+        return REQUEST_NUMBER_OFFSET + int(last_id) + 1
+
+    def create(self, draft: ProfileDraft, request_number: int | None = None) -> Profile:
         public = draft.public_data
         contact = draft.private_contact_data
         profile = Profile(
@@ -55,15 +57,13 @@ class ProfileRepository:
         )
         self.session.add(profile)
         self.session.flush()
-        profile.request_number = REQUEST_NUMBER_OFFSET + profile.id
-        self.session.add(
-            ProfileContact(
-                profile_id=profile.id,
-                phone=contact.get("phone"),
-                telegram_username=contact.get("telegram_username"),
-                whatsapp=contact.get("whatsapp"),
-            )
-        )
+        profile.request_number = request_number if request_number is not None else REQUEST_NUMBER_OFFSET + profile.id
+        self.session.add(ProfileContact(
+            profile_id=profile.id,
+            phone=contact.get("phone"),
+            telegram_username=contact.get("telegram_username"),
+            whatsapp=contact.get("whatsapp"),
+        ))
         self.session.flush()
         return profile
 
@@ -72,18 +72,17 @@ class ProfileRepository:
 
     def get_public(self, request_number: int) -> dict | None:
         profile = self.get(request_number)
-        return profile_to_dict(profile) if profile is not None else None
+        return profile_to_dict(profile) if profile else None
 
     def get_with_contact(self, request_number: int) -> dict | None:
         profile = self.get(request_number)
-        if profile is None:
+        if not profile:
             return None
-        contact = self.session.scalar(select(ProfileContact).where(ProfileContact.profile_id == profile.id))
-        return profile_to_dict(profile, contact)
+        return profile_to_dict(profile, self.get_contact(request_number))
 
     def get_contact(self, request_number: int) -> ProfileContact | None:
         profile = self.get(request_number)
-        if profile is None:
+        if not profile:
             return None
         return self.session.scalar(select(ProfileContact).where(ProfileContact.profile_id == profile.id))
 
@@ -91,8 +90,7 @@ class ProfileRepository:
         stmt = select(Profile)
         if not include_inactive:
             stmt = stmt.where(Profile.status.in_(["active", "reserved"]))
-        stmt = stmt.order_by(desc(Profile.created_at)).limit(max(1, min(limit, 50)))
-        return list(self.session.scalars(stmt).all())
+        return list(self.session.scalars(stmt.order_by(desc(Profile.created_at)).limit(max(1, min(limit, 50)))).all())
 
     def search(self, filters: ProfileFilters, include_inactive: bool = False) -> list[Profile]:
         stmt = select(Profile)
@@ -116,21 +114,16 @@ class ProfileRepository:
             stmt = stmt.where(Profile.children_count >= filters.children_min)
         if filters.children_max is not None:
             stmt = stmt.where(Profile.children_count <= filters.children_max)
-        stmt = stmt.order_by(Profile.age.asc(), desc(Profile.created_at)).limit(max(1, min(filters.limit, 50)))
-        return list(self.session.scalars(stmt).all())
+        return list(self.session.scalars(stmt.order_by(Profile.age.asc(), desc(Profile.created_at)).limit(max(1, min(filters.limit, 50)))).all())
 
     def update(self, request_number: int, changes: dict) -> Profile | None:
         profile = self.get(request_number)
-        if profile is None:
+        if not profile:
             return None
-        public_fields = {
-            "gender", "name", "age", "residence", "marital_status", "children_count",
-            "occupation", "education", "height", "weight", "appearance", "partner_requirements",
-            "photo_file_id", "status",
-        }
+        public_fields = {"gender", "name", "age", "residence", "marital_status", "children_count", "occupation", "education", "height", "weight", "appearance", "partner_requirements", "photo_file_id", "status"}
         contact_fields = {"phone", "telegram_username", "whatsapp"}
         contact = self.get_contact(request_number)
-        if contact is None:
+        if not contact:
             contact = ProfileContact(profile_id=profile.id)
             self.session.add(contact)
         for key, value in changes.items():
@@ -146,45 +139,45 @@ class ProfileRepository:
 
     def reserve(self, request_number: int) -> Profile | None:
         profile = self.get(request_number)
-        if profile is None or profile.status == "inactive":
+        if not profile or profile.status == "inactive":
             return None
         return self.update(request_number, {"status": "reserved"})
 
     def activate(self, request_number: int) -> Profile | None:
         profile = self.get(request_number)
-        if profile is None or profile.status == "inactive":
+        if not profile or profile.status == "inactive":
             return None
         return self.update(request_number, {"status": "active"})
 
     def delete_requests(self, request_numbers: list[int]) -> int:
-        numbers = sorted({int(number) for number in request_numbers if int(number) > 0})
+        numbers = sorted({int(n) for n in request_numbers if int(n) > 0})
         if not numbers:
             return 0
         profiles = list(self.session.scalars(select(Profile).where(Profile.request_number.in_(numbers))).all())
         if not profiles:
             return 0
-        profile_ids = [profile.id for profile in profiles]
-        self.session.execute(delete(Order).where(Order.profile_id.in_(profile_ids)))
-        self.session.execute(delete(ProfileContact).where(ProfileContact.profile_id.in_(profile_ids)))
-        self.session.execute(delete(Profile).where(Profile.id.in_(profile_ids)))
+        ids = [p.id for p in profiles]
+        self.session.execute(delete(Order).where(Order.profile_id.in_(ids)))
+        self.session.execute(delete(ProfileContact).where(ProfileContact.profile_id.in_(ids)))
+        self.session.execute(delete(Profile).where(Profile.id.in_(ids)))
         self.session.flush()
         return len(profiles)
 
     def delete_all(self) -> int:
-        profile_ids = list(self.session.scalars(select(Profile.id)).all())
-        if not profile_ids:
+        ids = list(self.session.scalars(select(Profile.id)).all())
+        if not ids:
             return 0
-        self.session.execute(delete(Order).where(Order.profile_id.in_(profile_ids)))
-        self.session.execute(delete(ProfileContact).where(ProfileContact.profile_id.in_(profile_ids)))
-        self.session.execute(delete(Profile).where(Profile.id.in_(profile_ids)))
+        self.session.execute(delete(Order).where(Order.profile_id.in_(ids)))
+        self.session.execute(delete(ProfileContact).where(ProfileContact.profile_id.in_(ids)))
+        self.session.execute(delete(Profile).where(Profile.id.in_(ids)))
         self.session.flush()
-        return len(profile_ids)
+        return len(ids)
 
     def all_profiles(self, include_inactive: bool = True) -> list[dict]:
         stmt = select(Profile).order_by(Profile.id)
         if not include_inactive:
             stmt = stmt.where(Profile.status.in_(["active", "reserved"]))
-        return [profile_to_dict(profile, self.get_contact(profile.request_number)) for profile in self.session.scalars(stmt).all()]
+        return [profile_to_dict(p, self.get_contact(p.request_number)) for p in self.session.scalars(stmt).all()]
 
     def stats(self) -> dict[str, int]:
         active = self.session.scalar(select(func.count(Profile.id)).where(Profile.status == "active")) or 0
@@ -192,9 +185,9 @@ class ProfileRepository:
         inactive = self.session.scalar(select(func.count(Profile.id)).where(Profile.status == "inactive")) or 0
         female = self.session.scalar(select(func.count(Profile.id)).where(Profile.gender == "female", Profile.status.in_(["active", "reserved"]))) or 0
         male = self.session.scalar(select(func.count(Profile.id)).where(Profile.gender == "male", Profile.status.in_(["active", "reserved"]))) or 0
-        pending_orders = self.session.scalar(select(func.count(Order.id)).where(Order.status.in_(["pending_payment", "pending_review"]))) or 0
-        paid_orders = self.session.scalar(select(func.count(Order.id)).where(Order.status == "paid")) or 0
-        return {"active": int(active), "reserved": int(reserved), "inactive": int(inactive), "female": int(female), "male": int(male), "pending_orders": int(pending_orders), "paid_orders": int(paid_orders)}
+        pending = self.session.scalar(select(func.count(Order.id)).where(Order.status.in_(["pending_payment", "pending_review"]))) or 0
+        paid = self.session.scalar(select(func.count(Order.id)).where(Order.status == "paid")) or 0
+        return {"active": int(active), "reserved": int(reserved), "inactive": int(inactive), "female": int(female), "male": int(male), "pending_orders": int(pending), "paid_orders": int(paid)}
 
 
 class OrderRepository:
@@ -203,16 +196,9 @@ class OrderRepository:
 
     def create_contact_request(self, user_telegram_id: int, request_number: int, amount: Decimal, payment_method: str) -> Order | None:
         profile = ProfileRepository(self.session).get(request_number)
-        if profile is None or profile.status != "active":
+        if not profile or profile.status != "active":
             return None
-        order = Order(
-            order_number=None,
-            user_telegram_id=user_telegram_id,
-            profile_id=profile.id,
-            amount_usd=amount,
-            payment_method=payment_method,
-            status="pending_payment",
-        )
+        order = Order(order_number=None, user_telegram_id=user_telegram_id, profile_id=profile.id, amount_usd=amount, payment_method=payment_method, status="pending_payment")
         self.session.add(order)
         self.session.flush()
         order.order_number = ORDER_NUMBER_OFFSET + order.id
@@ -228,7 +214,7 @@ class OrderRepository:
 
     def set_transaction_id(self, order_number: int, transaction_id: str) -> Order | None:
         order = self.get(order_number)
-        if order is None:
+        if not order:
             return None
         order.transaction_id = transaction_id.strip()
         order.status = "pending_review"
@@ -237,17 +223,16 @@ class OrderRepository:
 
     def confirm_payment(self, order_number: int) -> Order | None:
         order = self.get(order_number)
-        if order is None:
+        if not order:
             return None
-        if order.status != "pending_review":
-            return order
-        order.status = "paid"
-        self.session.flush()
+        if order.status == "pending_review":
+            order.status = "paid"
+            self.session.flush()
         return order
 
     def reject_payment(self, order_number: int, notes: str | None = None) -> Order | None:
         order = self.get(order_number)
-        if order is None:
+        if not order:
             return None
         order.status = "rejected"
         order.notes = notes
@@ -257,44 +242,26 @@ class OrderRepository:
 
 def export_all_data(session: Session) -> dict:
     profiles = ProfileRepository(session).all_profiles(True)
-    orders = []
-    for order in session.scalars(select(Order).order_by(Order.id)).all():
-        orders.append({
-            "order_number": order.order_number,
-            "user_telegram_id": order.user_telegram_id,
-            "profile_request_number": order.profile.request_number,
-            "amount_usd": str(order.amount_usd),
-            "payment_method": order.payment_method,
-            "status": order.status,
-            "transaction_id": order.transaction_id,
-            "notes": order.notes,
-            "created_at": order.created_at.isoformat() if order.created_at else None,
-            "updated_at": order.updated_at.isoformat() if order.updated_at else None,
-        })
+    orders = [{
+        "order_number": o.order_number, "user_telegram_id": o.user_telegram_id,
+        "profile_request_number": o.profile.request_number, "amount_usd": str(o.amount_usd),
+        "payment_method": o.payment_method, "status": o.status, "transaction_id": o.transaction_id,
+        "notes": o.notes, "created_at": o.created_at.isoformat() if o.created_at else None,
+        "updated_at": o.updated_at.isoformat() if o.updated_at else None,
+    } for o in session.scalars(select(Order).order_by(Order.id)).all()]
     return {"profiles": profiles, "orders": orders}
 
 
 def profile_to_dict(profile: Profile, contact: ProfileContact | None = None) -> dict:
     result = {
-        "id": profile.id,
-        "request_number": profile.request_number,
-        "gender": profile.gender,
-        "name": profile.name,
-        "age": profile.age,
-        "residence": profile.residence,
-        "marital_status": profile.marital_status,
-        "children_count": profile.children_count,
-        "occupation": profile.occupation,
-        "education": profile.education,
-        "height": profile.height,
-        "weight": profile.weight,
-        "appearance": profile.appearance,
-        "partner_requirements": profile.partner_requirements,
-        "photo_file_id": profile.photo_file_id,
-        "status": profile.status,
-        "created_at": profile.created_at.isoformat() if profile.created_at else None,
+        "id": profile.id, "request_number": profile.request_number, "gender": profile.gender, "name": profile.name,
+        "age": profile.age, "residence": profile.residence, "marital_status": profile.marital_status,
+        "children_count": profile.children_count, "occupation": profile.occupation, "education": profile.education,
+        "height": profile.height, "weight": profile.weight, "appearance": profile.appearance,
+        "partner_requirements": profile.partner_requirements, "photo_file_id": profile.photo_file_id,
+        "status": profile.status, "created_at": profile.created_at.isoformat() if profile.created_at else None,
         "updated_at": profile.updated_at.isoformat() if profile.updated_at else None,
     }
-    if contact is not None:
+    if contact:
         result.update({"phone": contact.phone, "telegram_username": contact.telegram_username, "whatsapp": contact.whatsapp})
     return result
