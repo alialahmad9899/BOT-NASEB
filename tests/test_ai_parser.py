@@ -60,6 +60,13 @@ def test_basic_profile_fallback_uses_damascus_as_city_when_only_damascus_is_give
     assert parsed.city == "دمشق"
 
 
+def test_normalize_profile_extraction_uses_matching_city_for_city_named_provinces():
+    extraction = ProfileExtraction(gender="female", province="دمشق", city=None)
+    normalized = normalize_profile_extraction(extraction)
+    assert normalized.province == "دمشق"
+    assert normalized.city == "دمشق"
+
+
 def test_ai_output_is_normalized_before_validation():
     extraction = ProfileExtraction(gender="أنثى", province=" دمشق ", phone="٠٩١١٢٢٣٣٤٤")
     normalized = normalize_profile_extraction(extraction)
