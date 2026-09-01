@@ -52,6 +52,11 @@ def _order_actions_keyboard(order_number: int):
     return order_actions_keyboard(order_number)
 
 
+def _admin_delete_menu_keyboard():
+    from app.keyboards.admin import admin_delete_menu_keyboard
+    return admin_delete_menu_keyboard()
+
+
 def _confirm_delete_all_keyboard():
     from app.keyboards.admin import confirm_delete_all_keyboard
     return confirm_delete_all_keyboard()
@@ -123,7 +128,7 @@ async def admin_callback(update: Any, context: Any) -> int:
 
     if data == "admin:disable":
         context.user_data["admin_flow"] = "disable_request"
-        await query.edit_message_text("🗑️ ابعت رقم الطلب اللي بدك تعطّله.", reply_markup=_back_to_admin_keyboard())
+        await query.edit_message_text("⛔ ابعت رقم الطلب اللي بدك تعطّله.", reply_markup=_back_to_admin_keyboard())
         return DISABLE_REQUEST
     if data.startswith("admin:disable:confirm:"):
         return await _disable_profile(update, context, _number_suffix(data))
@@ -173,7 +178,11 @@ async def admin_callback(update: Any, context: Any) -> int:
 
     if data == "admin:delete":
         context.user_data["admin_flow"] = "delete_request"
-        await query.edit_message_text("🧹 حذف إعلانات\n\nاكتب أرقام الطلبات اللي بدك تحذفها، وافصل بينها بفواصل أو مسافات.\nمثال: 101, 104, 108\n\nولحذف الكل استخدم زر «حذف الكل».", reply_markup=_back_to_admin_keyboard())
+        await query.edit_message_text("🧹 إدارة حذف الإعلانات\n\nاختار شو بدك تعمل:", reply_markup=_admin_delete_menu_keyboard())
+        return DELETE_REQUEST
+    if data == "admin:delete:selected":
+        context.user_data["admin_flow"] = "delete_request"
+        await query.edit_message_text("🧹 حذف طلبات محددة\n\nابعت أرقام الطلبات وافصل بينها بفواصل أو مسافات.\nمثال: 101, 104, 108", reply_markup=_back_to_admin_keyboard())
         return DELETE_REQUEST
     if data == "admin:delete:all":
         await query.edit_message_text("⚠️ انتبه! هالعملية رح تحذف **كل إعلانات الزواج وطلبات التواصل المرتبطة فيها نهائياً**.\n\nمتأكد؟", reply_markup=_confirm_delete_all_keyboard(), parse_mode="Markdown")
@@ -385,8 +394,14 @@ async def _show_latest(update: Any, context: Any) -> None:
     if not rows:
         await update.callback_query.edit_message_text("📋 ما في عروض حالياً.", reply_markup=_admin_main_keyboard())
         return
-    text = "📋 آخر الإعلانات:\n\n" + "\n".join(f"📌 طلب {row.request_number} — {row.name or 'بدون اسم'} — {row.age} سنة — {row.residence} — {row.status}" for row in rows)
-    await update.callback_query.edit_message_text(text, reply_markup=_admin_main_keyboard())
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    text = "📋 آخر الإعلانات:\n\n" + "\n".join(
+        f"📌 طلب {row.request_number} — {row.name or 'بدون اسم'} — {row.age} سنة — {row.residence} — {('🔒 محجوز' if row.status == 'reserved' else '⛔ معطّل' if row.status == 'inactive' else '✅ متاح')}"
+        for row in rows
+    )
+    buttons = [[InlineKeyboardButton(f"📌 تفاصيل {row.request_number}", callback_data=f"admin:profile:{row.request_number}")] for row in rows]
+    buttons.append([InlineKeyboardButton("⬅️ لوحة الأدمن", callback_data="admin:menu")])
+    await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons))
 
 
 async def _run_search(update: Any, context: Any, text: str) -> int:
@@ -411,12 +426,19 @@ async def _run_search(update: Any, context: Any, text: str) -> int:
     with _session(context) as session:
         rows = ProfileRepository(session).search(filters)
     if not rows:
-        await update.effective_message.reply_text("🔎 ما لقينا نتائج مطابقة لهالمواصفات.", reply_markup=_back_to_admin_keyboard())
-        return END
+        await update.effective_message.reply_text("🔎 ما لقينا نتائج مطابقة لهالمواصفات. جرّب تخفيف شرط أو توسعة العمر/السكن.", reply_markup=_back_to_admin_keyboard())
+        return SEARCH_TEXT
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
     buttons = [[InlineKeyboardButton(f"📌 تفاصيل طلب {row.request_number}", callback_data=f"admin:profile:{row.request_number}")] for row in rows]
+    buttons.append([InlineKeyboardButton("🔄 بحث جديد", callback_data="admin:search")])
     buttons.append([InlineKeyboardButton("⬅️ لوحة الأدمن", callback_data="admin:menu")])
-    await update.effective_message.reply_text(f"🔎 لقينا {len(rows)} نتيجة:\n\n" + "\n".join(f"📌 طلب {row.request_number} — {row.age} سنة — {row.residence} — {('🔒 محجوز' if row.status == 'reserved' else '✅ متاح')}" for row in rows), reply_markup=InlineKeyboardMarkup(buttons))
+    await update.effective_message.reply_text(
+        f"🔎 لقينا {len(rows)} نتيجة:\n\n" + "\n".join(
+            f"📌 طلب {row.request_number} — {row.age} سنة — {row.residence} — {('🔒 محجوز' if row.status == 'reserved' else '✅ متاح')}"
+            for row in rows
+        ),
+        reply_markup=InlineKeyboardMarkup(buttons),
+    )
     return END
 
 
@@ -505,6 +527,7 @@ async def _send_backup(update: Any, context: Any) -> None:
         data = json.dumps(export_all_data(session), ensure_ascii=False, indent=2).encode("utf-8")
     from telegram import BufferedInputFile
     await update.callback_query.message.reply_document(BufferedInputFile(data, filename="naseb-backup.json"), caption="💾 نسخة احتياطية من بيانات الإعلانات.")
+    await update.callback_query.message.edit_text("✅ انبعتت النسخة الاحتياطية.\n\n🔐 بيانات التواصل الحساسة موجودة ضمن النسخة لأنها مخصصة للأدمن فقط.", reply_markup=_admin_main_keyboard())
 
 
 async def _show_orders(update: Any, context: Any) -> None:
@@ -514,10 +537,24 @@ async def _show_orders(update: Any, context: Any) -> None:
         await update.callback_query.edit_message_text("💳 ما في طلبات معلّقة حالياً.", reply_markup=_admin_main_keyboard())
         return
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-    rows = [[InlineKeyboardButton(f"🔎 {order.order_number}", callback_data=f"admin:order:view:{order.order_number}"), InlineKeyboardButton("✅", callback_data=f"admin:order:confirm:{order.order_number}"), InlineKeyboardButton("❌", callback_data=f"admin:order:reject:{order.order_number}")] for order in orders]
-    rows.append([InlineKeyboardButton("⬅️ لوحة الأدمن", callback_data="admin:menu")])
-    text = "💳 الطلبات المعلّقة:\n\n" + "\n".join(f"📌 طلب دفع {order.order_number} — الإعلان {order.profile.request_number} — {order.status}" for order in orders)
-    await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(rows))
+    status_labels = {"pending_payment": "بانتظار الدفع", "pending_review": "بانتظار مراجعة الدفع"}
+    buttons = []
+    for order in orders:
+        row = [InlineKeyboardButton(f"🔎 {order.order_number}", callback_data=f"admin:order:view:{order.order_number}")]
+        if order.status == "pending_review":
+            row.extend([
+                InlineKeyboardButton("✅", callback_data=f"admin:order:confirm:{order.order_number}"),
+                InlineKeyboardButton("❌", callback_data=f"admin:order:reject:{order.order_number}"),
+            ])
+        else:
+            row.append(InlineKeyboardButton("❌", callback_data=f"admin:order:reject:{order.order_number}"))
+        buttons.append(row)
+    buttons.append([InlineKeyboardButton("⬅️ لوحة الأدمن", callback_data="admin:menu")])
+    text = "💳 الطلبات المعلّقة:\n\n" + "\n".join(
+        f"📌 طلب دفع {order.order_number} — الإعلان {order.profile.request_number} — {status_labels.get(order.status, order.status)}"
+        for order in orders
+    )
+    await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons))
 
 
 async def _view_order(update: Any, context: Any, order_number: int | None) -> int:
@@ -529,7 +566,8 @@ async def _view_order(update: Any, context: Any, order_number: int | None) -> in
             await update.callback_query.edit_message_text("❌ ما لقينا طلب الدفع.", reply_markup=_admin_main_keyboard())
             return END
         profile = profile_to_dict(order.profile, order.profile.contact)
-    text = (f"💳 طلب الدفع رقم {order.order_number}\n" f"👤 Telegram User ID: {order.user_telegram_id}\n" f"💵 المبلغ: {order.amount_usd} USD\n" f"💳 طريقة الدفع: {order.payment_method}\n" f"🧾 رقم العملية: {order.transaction_id or 'لم يُرسل بعد'}\n" f"📊 الحالة: {order.status}\n\n" + format_admin_profile(profile))
+    status_labels = {"pending_payment": "بانتظار الدفع", "pending_review": "بانتظار مراجعة الدفع", "paid": "مدفوع", "rejected": "مرفوض"}
+    text = (f"💳 طلب الدفع رقم {order.order_number}\n" f"👤 Telegram User ID: {order.user_telegram_id}\n" f"💵 المبلغ: {order.amount_usd} USD\n" f"💳 طريقة الدفع: {order.payment_method}\n" f"🧾 رقم العملية: {order.transaction_id or 'لم يُرسل بعد'}\n" f"📊 الحالة: {status_labels.get(order.status, order.status)}\n\n" + format_admin_profile(profile))
     await update.callback_query.edit_message_text(text, reply_markup=_order_actions_keyboard(order_number))
     return END
 
@@ -538,10 +576,15 @@ async def _confirm_order(update: Any, context: Any, order_number: int | None) ->
     if order_number is None:
         return END
     with _session(context) as session:
-        order = OrderRepository(session).confirm_payment(order_number)
-        if order is None:
+        repo = OrderRepository(session)
+        current = repo.get(order_number)
+        if current is None:
             await update.callback_query.edit_message_text("❌ ما لقينا الطلب.", reply_markup=_admin_main_keyboard())
             return END
+        if current.status != "pending_review" or not current.transaction_id:
+            await update.callback_query.edit_message_text("⚠️ ما فينا نأكد الطلب قبل ما يوصل رقم العملية وتتحول الحالة لمراجعة الدفع.", reply_markup=_admin_main_keyboard())
+            return END
+        order = repo.confirm_payment(order_number)
         session.commit()
         user_id = order.user_telegram_id
     try:
@@ -556,10 +599,15 @@ async def _reject_order(update: Any, context: Any, order_number: int | None) -> 
     if order_number is None:
         return END
     with _session(context) as session:
-        order = OrderRepository(session).reject_payment(order_number, "رفض يدوي من الأدمن")
-        if order is None:
+        repo = OrderRepository(session)
+        current = repo.get(order_number)
+        if current is None:
             await update.callback_query.edit_message_text("❌ ما لقينا الطلب.", reply_markup=_admin_main_keyboard())
             return END
+        if current.status in {"paid", "rejected"}:
+            await update.callback_query.edit_message_text("⚠️ هالطلب تمت معالجته من قبل.", reply_markup=_admin_main_keyboard())
+            return END
+        order = repo.reject_payment(order_number, "رفض يدوي من الأدمن")
         session.commit()
         user_id = order.user_telegram_id
     try:

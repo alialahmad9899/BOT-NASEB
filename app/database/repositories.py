@@ -99,7 +99,8 @@ class ProfileRepository:
         if filters.gender:
             stmt = stmt.where(Profile.gender == filters.gender)
         if filters.residence:
-            stmt = stmt.where(Profile.residence.ilike(f"%{filters.residence.strip()}%"))
+            residence = filters.residence.strip().rstrip(" -–")
+            stmt = stmt.where(Profile.residence.ilike(f"{residence}%"))
         if filters.age_min is not None:
             stmt = stmt.where(Profile.age >= filters.age_min)
         if filters.age_max is not None:
@@ -198,6 +199,13 @@ class OrderRepository:
         profile = ProfileRepository(self.session).get(request_number)
         if not profile or profile.status != "active":
             return None
+        existing = self.session.scalar(select(Order).where(
+            Order.user_telegram_id == user_telegram_id,
+            Order.profile_id == profile.id,
+            Order.status.in_(["pending_payment", "pending_review"]),
+        ).order_by(desc(Order.created_at)))
+        if existing:
+            return existing
         order = Order(order_number=None, user_telegram_id=user_telegram_id, profile_id=profile.id, amount_usd=amount, payment_method=payment_method, status="pending_payment")
         self.session.add(order)
         self.session.flush()
@@ -212,11 +220,18 @@ class OrderRepository:
         stmt = select(Order).where(Order.status.in_(["pending_payment", "pending_review"])).order_by(desc(Order.created_at)).limit(max(1, min(limit, 50)))
         return list(self.session.scalars(stmt).all())
 
+    def list_for_user(self, user_telegram_id: int, limit: int = 20) -> list[Order]:
+        stmt = select(Order).where(Order.user_telegram_id == user_telegram_id).order_by(desc(Order.created_at)).limit(max(1, min(limit, 50)))
+        return list(self.session.scalars(stmt).all())
+
     def set_transaction_id(self, order_number: int, transaction_id: str) -> Order | None:
         order = self.get(order_number)
         if not order:
             return None
-        order.transaction_id = transaction_id.strip()
+        transaction_id = transaction_id.strip()
+        if not transaction_id:
+            return order
+        order.transaction_id = transaction_id
         order.status = "pending_review"
         self.session.flush()
         return order
