@@ -44,17 +44,26 @@ def client_results_keyboard(request_numbers: list[int]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
-def client_profile_keyboard(request_number: int, status: str = "active") -> InlineKeyboardMarkup:
+def client_profile_keyboard(request_number: int, status: str = "active", has_results: bool = False) -> InlineKeyboardMarkup:
     rows = []
     if status == "active":
         rows.append([InlineKeyboardButton("📩 طلب تواصل", callback_data=f"client:request:{request_number}")])
     elif status == "reserved":
         rows.append([InlineKeyboardButton("🔒 العرض محجوز حالياً", callback_data="client:menu")])
+    if has_results:
+        rows.append([InlineKeyboardButton("⬅️ نتائج البحث", callback_data="client:results")])
     rows.extend([
         [InlineKeyboardButton("🔄 بحث جديد", callback_data="client:search")],
         [InlineKeyboardButton("⬅️ القائمة الرئيسية", callback_data="client:menu")],
     ])
     return InlineKeyboardMarkup(rows)
+
+
+def client_results_history_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔄 بحث جديد", callback_data="client:search")],
+        [InlineKeyboardButton("⬅️ القائمة الرئيسية", callback_data="client:menu")],
+    ])
 
 
 def client_orders_keyboard(order_numbers: list[int]) -> InlineKeyboardMarkup:
