@@ -220,11 +220,33 @@ class OrderRepository:
         stmt = select(Order).where(Order.status.in_(["pending_payment", "pending_review"])).order_by(desc(Order.created_at)).limit(max(1, min(limit, 50)))
         return list(self.session.scalars(stmt).all())
 
+    def list_pending_summaries(self, limit: int = 30) -> list[dict[str, int | str | None]]:
+        stmt = (
+            select(Order.order_number, Order.user_telegram_id, Order.amount_usd, Order.payment_method, Order.status, Order.whatsapp, Profile.request_number)
+            .join(Profile, Profile.id == Order.profile_id)
+            .where(Order.status.in_(["pending_payment", "pending_review"]))
+            .order_by(desc(Order.created_at))
+            .limit(max(1, min(limit, 50)))
+        )
+        return [
+            {
+                "order_number": row.order_number,
+                "user_telegram_id": row.user_telegram_id,
+                "amount_usd": row.amount_usd,
+                "payment_method": row.payment_method,
+                "status": row.status,
+                "whatsapp": row.whatsapp,
+                "profile_request_number": row.request_number,
+            }
+            for row in self.session.execute(stmt).all()
+        ]
+
     def list_for_user(self, user_telegram_id: int, limit: int = 20) -> list[Order]:
         stmt = select(Order).where(Order.user_telegram_id == user_telegram_id).order_by(desc(Order.created_at)).limit(max(1, min(limit, 50)))
         return list(self.session.scalars(stmt).all())
 
     def set_transaction_id(self, order_number: int, transaction_id: str) -> Order | None:
+        """Legacy compatibility only; the current client flow does not request transaction IDs."""
         order = self.get(order_number)
         if not order:
             return None
@@ -240,7 +262,7 @@ class OrderRepository:
         order = self.get(order_number)
         if not order:
             return None
-        if order.status == "pending_review":
+        if order.status in {"pending_payment", "pending_review"}:
             order.status = "paid"
             self.session.flush()
         return order
@@ -249,10 +271,24 @@ class OrderRepository:
         order = self.get(order_number)
         if not order:
             return None
-        order.status = "rejected"
-        order.notes = notes
-        self.session.flush()
+        if order.status in {"pending_payment", "pending_review"}:
+            order.status = "rejected"
+            order.notes = notes
+            self.session.flush()
         return order
+
+    def delete_order(self, order_number: int) -> bool:
+        order = self.get(order_number)
+        if not order or order.status not in {"pending_payment", "pending_review"}:
+            return False
+        self.session.delete(order)
+        self.session.flush()
+        return True
+
+    def delete_pending(self) -> int:
+        result = self.session.execute(delete(Order).where(Order.status.in_(["pending_payment", "pending_review"])))
+        self.session.flush()
+        return int(result.rowcount or 0)
 
 
 def export_all_data(session: Session) -> dict:
