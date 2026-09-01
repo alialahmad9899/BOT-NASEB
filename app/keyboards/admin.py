@@ -64,6 +64,7 @@ def admin_delete_menu_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🗑️ حذف طلبات محددة", callback_data="admin:delete:selected")],
         [InlineKeyboardButton("⚠️ حذف جميع الإعلانات", callback_data="admin:delete:all")],
+        [InlineKeyboardButton("❌ إلغاء", callback_data="admin:delete:cancel")],
         [InlineKeyboardButton("⬅️ لوحة الأدمن", callback_data="admin:menu")],
     ])
 
