@@ -11,7 +11,11 @@ def normalize_whatsapp(value: str) -> str | None:
     if digits.startswith("00"):
         digits = digits[2:]
     if digits.startswith("963"):
-        local = digits[3:]
+        subscriber = digits[3:]
+        if len(subscriber) == 9 and subscriber.startswith("9"):
+            local = f"0{subscriber}"
+        else:
+            local = subscriber
     else:
         local = digits
     if len(local) != 10 or not local.startswith("09"):
