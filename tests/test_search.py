@@ -2,77 +2,83 @@ from app.services.ai import SearchFilterExtraction
 from app.services.search import filters_from_ai, parse_search_text
 
 
-def test_syrian_search_understands_al_prefixed_age_range_without_inventing_city_filter():
+def test_syrian_search_understands_age_range_and_unified_residence():
     filters = parse_search_text("بنت دمشق عمرا بين ال20 و39")
 
     assert filters.gender == "female"
-    assert filters.province == "دمشق"
+    assert filters.residence == "دمشق"
     assert filters.age_min == 20
     assert filters.age_max == 39
-    assert filters.city is None
 
 
-def test_ai_search_filters_do_not_add_same_province_as_city_without_explicit_city_reference():
+def test_ai_search_uses_one_residence_field():
     extraction = SearchFilterExtraction(
         gender="female",
-        province="دمشق",
-        city="دمشق",
+        residence="دمشق",
         age_min=20,
         age_max=39,
     )
 
     filters = filters_from_ai(extraction, "بنت دمشق عمرا بين ال20 و39")
 
-    assert filters.province == "دمشق"
-    assert filters.city is None
+    assert filters.gender == "female"
+    assert filters.residence == "دمشق"
     assert filters.age_min == 20
     assert filters.age_max == 39
 
 
-def test_search_understands_common_syrian_age_phrasing():
-    filters = parse_search_text("بدي بنت من دمشق عمرها 25")
+def test_search_understands_sham_as_damascus():
+    filters = parse_search_text("بدي بنت من الشام بين 22 و28")
 
     assert filters.gender == "female"
-    assert filters.province == "دمشق"
+    assert filters.residence == "دمشق"
+    assert filters.age_min == 22
+    assert filters.age_max == 28
+
+
+def test_search_understands_rural_residence_as_one_field():
+    filters = parse_search_text("بدي بنت من ريف حمص عمرها 25")
+
+    assert filters.gender == "female"
+    assert filters.residence == "ريف حمص"
     assert filters.age_min == 25
     assert filters.age_max == 25
 
 
-def test_search_understands_sham_as_damascus_alias():
-    filters = parse_search_text("بدي بنت من الشام بين 22 و28")
-
-    assert filters.gender == "female"
-    assert filters.province == "دمشق"
-    assert filters.age_min == 22
-    assert filters.age_max == 28
-
-
-def test_ai_search_accepts_sham_alias_for_damascus():
+def test_ai_search_accepts_specific_residence():
     extraction = SearchFilterExtraction(
-        gender="female",
-        province="دمشق",
-        city=None,
-        age_min=22,
-        age_max=28,
+        gender="male",
+        residence="ريف حماة",
+        age_min=28,
+        age_max=35,
     )
 
-    filters = filters_from_ai(extraction, "بدي بنت من الشام بين 22 و28")
+    filters = filters_from_ai(extraction, "بدي عريس ساكن بريف حماة بين 28 و35")
 
-    assert filters.gender == "female"
-    assert filters.province == "دمشق"
-    assert filters.age_min == 22
-    assert filters.age_max == 28
+    assert filters.gender == "male"
+    assert filters.residence == "ريف حماة"
+    assert filters.age_min == 28
+    assert filters.age_max == 35
 
 
-def test_ai_search_normalizes_marital_typos_without_dropping_filter():
+def test_search_normalizes_marital_typo():
     extraction = SearchFilterExtraction(
         gender="female",
-        province="دمشق",
+        residence="دمشق",
         marital_status="مطلقة",
     )
 
-    filters = filters_from_ai(extraction, "بنت دمشق مطلقه")
+    filters = filters_from_ai(extraction, "بنت من الشام مطلقه")
 
     assert filters.gender == "female"
-    assert filters.province == "دمشق"
+    assert filters.residence == "دمشق"
     assert filters.marital_status == "مطلقة"
+
+
+def test_search_supports_children_filter():
+    filters = parse_search_text("بدي عروس من حلب بدون ولاد")
+
+    assert filters.gender == "female"
+    assert filters.residence == "حلب"
+    assert filters.children_min == 0
+    assert filters.children_max == 0
