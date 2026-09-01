@@ -6,11 +6,11 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 def admin_main_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("➕ إضافة إعلان", callback_data="admin:add")],
-        [InlineKeyboardButton("🔎 البحث", callback_data="admin:search"), InlineKeyboardButton("📋 آخر الإعلانات", callback_data="admin:list")],
-        [InlineKeyboardButton("✏️ تعديل إعلان", callback_data="admin:edit"), InlineKeyboardButton("🗑️ تعطيل إعلان", callback_data="admin:disable")],
-        [InlineKeyboardButton("🔒 إدارة الحجز", callback_data="admin:reservations")],
+        [InlineKeyboardButton("🔎 البحث", callback_data="admin:search"), InlineKeyboardButton("📋 الإعلانات", callback_data="admin:list")],
+        [InlineKeyboardButton("✏️ تعديل إعلان", callback_data="admin:edit"), InlineKeyboardButton("⛔ تعطيل إعلان", callback_data="admin:disable")],
+        [InlineKeyboardButton("🔒 الحجوزات", callback_data="admin:reservations")],
         [InlineKeyboardButton("🧹 حذف إعلانات", callback_data="admin:delete")],
-        [InlineKeyboardButton("💳 الطلبات والمدفوعات", callback_data="admin:orders")],
+        [InlineKeyboardButton("💳 طلبات التواصل", callback_data="admin:orders")],
         [InlineKeyboardButton("📊 الإحصائيات", callback_data="admin:stats"), InlineKeyboardButton("💾 نسخة احتياطية", callback_data="admin:backup")],
     ])
 
@@ -56,6 +56,14 @@ def order_actions_keyboard(order_number: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🔎 التفاصيل", callback_data=f"admin:order:view:{order_number}"), InlineKeyboardButton("✅ تأكيد الدفع", callback_data=f"admin:order:confirm:{order_number}")],
         [InlineKeyboardButton("❌ رفض الدفع", callback_data=f"admin:order:reject:{order_number}")],
+        [InlineKeyboardButton("⬅️ لوحة الأدمن", callback_data="admin:menu")],
+    ])
+
+
+def admin_delete_menu_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🗑️ حذف طلبات محددة", callback_data="admin:delete:selected")],
+        [InlineKeyboardButton("⚠️ حذف جميع الإعلانات", callback_data="admin:delete:all")],
         [InlineKeyboardButton("⬅️ لوحة الأدمن", callback_data="admin:menu")],
     ])
 
