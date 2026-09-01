@@ -1,4 +1,4 @@
-from app.handlers.start import start_content_for_user
+from app.handlers.start import reset_session_for_start, start_content_for_user
 
 
 def test_start_returns_admin_menu_for_admin_user():
@@ -16,3 +16,16 @@ def test_start_returns_client_menu_for_regular_user():
     assert "لقاء ونصيب" in result.text
     assert "📋 تصفح العروض" in result.text
     assert "لوحة الأدمن" not in result.text
+
+
+def test_start_session_reset_clears_previous_flow_state():
+    context = type("Context", (), {})()
+    context.user_data = {
+        "client_flow": "search",
+        "search_target_gender": "female",
+        "pending_profile": "stale",
+    }
+
+    reset_session_for_start(context)
+
+    assert context.user_data == {}
