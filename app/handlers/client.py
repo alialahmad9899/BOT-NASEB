@@ -13,7 +13,6 @@ from app.keyboards.client import (
     client_orders_keyboard,
     client_payment_keyboard,
     client_profile_keyboard,
-    client_results_history_keyboard,
     client_results_keyboard,
     client_search_confirm_keyboard,
     client_search_keyboard,
@@ -136,8 +135,27 @@ async def client_callback(update: Any, context: Any) -> int:
         return await _show_orders(update, context)
     if data.startswith("client:order:view:"):
         return await _show_order(update, context, _number_suffix(data))
+    if data.startswith("client:payment:submit:"):
+        order_number = _number_suffix(data)
+        if order_number is None:
+            await query.edit_message_text("❌ ما فهمت رقم طلب الدفع.", reply_markup=client_main_keyboard())
+            return END
+        with _session(context) as session:
+            order = OrderRepository(session).get(order_number)
+        if order is None or order.user_telegram_id != update.effective_user.id:
+            await query.edit_message_text("❌ ما لقينا هالطلب ضمن طلباتك.", reply_markup=client_main_keyboard())
+            return END
+        if order.status != "pending_payment":
+            await query.edit_message_text("ℹ️ هالطلب ما عاد بانتظار رقم عملية الدفع.", reply_markup=client_main_keyboard())
+            return END
+        context.user_data.clear()
+        context.user_data["client_flow"] = "payment"
+        context.user_data["pending_order_number"] = order_number
+        await query.edit_message_text("🧾 تمام، ابعت رقم عملية التحويل برسالة وحدة.", reply_markup=client_payment_keyboard())
+        return PAYMENT_TX
     if data == "client:payment:submit":
-        if not context.user_data.get("pending_order_number"):
+        order_number = context.user_data.get("pending_order_number")
+        if not order_number:
             await query.edit_message_text("❌ ما في طلب دفع مفتوح حالياً. فيك تشوف طلباتك من القائمة.", reply_markup=client_main_keyboard())
             return END
         await query.edit_message_text("🧾 تمام، ابعت رقم عملية التحويل برسالة وحدة.", reply_markup=client_search_keyboard())
@@ -298,7 +316,7 @@ async def _show_order(update: Any, context: Any, order_number: int | None) -> in
         f"🧾 رقم العملية: {transaction}\n"
         f"📊 الحالة: {status_labels.get(order.status, order.status)}"
     )
-    await update.callback_query.edit_message_text(message, reply_markup=client_order_detail_keyboard())
+    await update.callback_query.edit_message_text(message, reply_markup=client_order_detail_keyboard(order.status, order.order_number))
     return END
 
 
