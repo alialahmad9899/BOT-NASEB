@@ -114,11 +114,19 @@ def merge_private_contacts(
 def normalize_profile_extraction(extraction: ProfileExtraction) -> ProfileExtraction:
     from app.services.profiles import normalize_digits, normalize_gender
 
+    province = extraction.province.strip() if extraction.province else None
+    city = extraction.city.strip() if extraction.city else None
+    if city is None and province and province in {
+        "دمشق", "حلب", "حمص", "حماة", "اللاذقية", "طرطوس", "إدلب",
+        "الرقة", "دير الزور", "الحسكة", "درعا", "السويداء", "القنيطرة",
+    }:
+        city = province
+
     updates = {
         "gender": normalize_gender(extraction.gender) if extraction.gender else None,
         "name": _normalize_name(extraction.name),
-        "province": extraction.province.strip() if extraction.province else None,
-        "city": extraction.city.strip() if extraction.city else None,
+        "province": province,
+        "city": city,
         "marital_status": extraction.marital_status.strip() if extraction.marital_status else None,
         "occupation": extraction.occupation.strip() if extraction.occupation else None,
         "description": _remove_private_contact_values(extraction.description),
@@ -131,7 +139,7 @@ def normalize_profile_extraction(extraction: ProfileExtraction) -> ProfileExtrac
 
 
 class AIService:
-    def __init__(self, api_key: str | None = None, model: str = "gemini-2.5-flash-lite") -> None:
+    def __init__(self, api_key: str | None = None, model: str = "gemini-3.5-flash-lite") -> None:
         self._api_key = api_key.strip() if api_key else None
         self.model = model
         self._client: Any | None = None
@@ -323,6 +331,12 @@ def basic_profile_extraction(raw_text: str, photo_file_id: str | None = None) ->
                 if line and line not in known and line != name and len(line) <= 40 and not re.search(r"\d", line):
                     city = line
                     break
+
+    if city is None and province and province in {
+        "دمشق", "حلب", "حمص", "حماة", "اللاذقية", "طرطوس", "إدلب",
+        "الرقة", "دير الزور", "الحسكة", "درعا", "السويداء", "القنيطرة",
+    }:
+        city = province
 
     description = None
     requirement = None
