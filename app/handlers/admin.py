@@ -52,6 +52,11 @@ def _order_actions_keyboard(order_number: int):
     return order_actions_keyboard(order_number)
 
 
+def _admin_delete_menu_keyboard():
+    from app.keyboards.admin import admin_delete_menu_keyboard
+    return admin_delete_menu_keyboard()
+
+
 def _confirm_delete_all_keyboard():
     from app.keyboards.admin import confirm_delete_all_keyboard
     return confirm_delete_all_keyboard()
@@ -123,7 +128,7 @@ async def admin_callback(update: Any, context: Any) -> int:
 
     if data == "admin:disable":
         context.user_data["admin_flow"] = "disable_request"
-        await query.edit_message_text("🗑️ ابعت رقم الطلب اللي بدك تعطّله.", reply_markup=_back_to_admin_keyboard())
+        await query.edit_message_text("⛔ ابعت رقم الطلب اللي بدك تعطّله.", reply_markup=_back_to_admin_keyboard())
         return DISABLE_REQUEST
     if data.startswith("admin:disable:confirm:"):
         return await _disable_profile(update, context, _number_suffix(data))
@@ -173,7 +178,11 @@ async def admin_callback(update: Any, context: Any) -> int:
 
     if data == "admin:delete":
         context.user_data["admin_flow"] = "delete_request"
-        await query.edit_message_text("🧹 حذف إعلانات\n\nاكتب أرقام الطلبات اللي بدك تحذفها، وافصل بينها بفواصل أو مسافات.\nمثال: 101, 104, 108\n\nولحذف الكل استخدم زر «حذف الكل».", reply_markup=_back_to_admin_keyboard())
+        await query.edit_message_text("🧹 إدارة حذف الإعلانات\n\nاختار شو بدك تعمل:", reply_markup=_admin_delete_menu_keyboard())
+        return DELETE_REQUEST
+    if data == "admin:delete:selected":
+        context.user_data["admin_flow"] = "delete_request"
+        await query.edit_message_text("🧹 حذف طلبات محددة\n\nابعت أرقام الطلبات وافصل بينها بفواصل أو مسافات.\nمثال: 101, 104, 108", reply_markup=_back_to_admin_keyboard())
         return DELETE_REQUEST
     if data == "admin:delete:all":
         await query.edit_message_text("⚠️ انتبه! هالعملية رح تحذف **كل إعلانات الزواج وطلبات التواصل المرتبطة فيها نهائياً**.\n\nمتأكد؟", reply_markup=_confirm_delete_all_keyboard(), parse_mode="Markdown")
@@ -385,8 +394,14 @@ async def _show_latest(update: Any, context: Any) -> None:
     if not rows:
         await update.callback_query.edit_message_text("📋 ما في عروض حالياً.", reply_markup=_admin_main_keyboard())
         return
-    text = "📋 آخر الإعلانات:\n\n" + "\n".join(f"📌 طلب {row.request_number} — {row.name or 'بدون اسم'} — {row.age} سنة — {row.residence} — {row.status}" for row in rows)
-    await update.callback_query.edit_message_text(text, reply_markup=_admin_main_keyboard())
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    text = "📋 آخر الإعلانات:\n\n" + "\n".join(
+        f"📌 طلب {row.request_number} — {row.name or 'بدون اسم'} — {row.age} سنة — {row.residence} — {('🔒 محجوز' if row.status == 'reserved' else '⛔ معطّل' if row.status == 'inactive' else '✅ متاح')}"
+        for row in rows
+    )
+    buttons = [[InlineKeyboardButton(f"📌 تفاصيل {row.request_number}", callback_data=f"admin:profile:{row.request_number}")] for row in rows]
+    buttons.append([InlineKeyboardButton("⬅️ لوحة الأدمن", callback_data="admin:menu")])
+    await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons))
 
 
 async def _run_search(update: Any, context: Any, text: str) -> int:
@@ -411,12 +426,19 @@ async def _run_search(update: Any, context: Any, text: str) -> int:
     with _session(context) as session:
         rows = ProfileRepository(session).search(filters)
     if not rows:
-        await update.effective_message.reply_text("🔎 ما لقينا نتائج مطابقة لهالمواصفات.", reply_markup=_back_to_admin_keyboard())
-        return END
+        await update.effective_message.reply_text("🔎 ما لقينا نتائج مطابقة لهالمواصفات. جرّب تخفيف شرط أو توسعة العمر/السكن.", reply_markup=_back_to_admin_keyboard())
+        return SEARCH_TEXT
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
     buttons = [[InlineKeyboardButton(f"📌 تفاصيل طلب {row.request_number}", callback_data=f"admin:profile:{row.request_number}")] for row in rows]
+    buttons.append([InlineKeyboardButton("🔄 بحث جديد", callback_data="admin:search")])
     buttons.append([InlineKeyboardButton("⬅️ لوحة الأدمن", callback_data="admin:menu")])
-    await update.effective_message.reply_text(f"🔎 لقينا {len(rows)} نتيجة:\n\n" + "\n".join(f"📌 طلب {row.request_number} — {row.age} سنة — {row.residence} — {('🔒 محجوز' if row.status == 'reserved' else '✅ متاح')}" for row in rows), reply_markup=InlineKeyboardMarkup(buttons))
+    await update.effective_message.reply_text(
+        f"🔎 لقينا {len(rows)} نتيجة:\n\n" + "\n".join(
+            f"📌 طلب {row.request_number} — {row.age} سنة — {row.residence} — {('🔒 محجوز' if row.status == 'reserved' else '✅ متاح')}"
+            for row in rows
+        ),
+        reply_markup=InlineKeyboardMarkup(buttons),
+    )
     return END
 
 
@@ -505,6 +527,7 @@ async def _send_backup(update: Any, context: Any) -> None:
         data = json.dumps(export_all_data(session), ensure_ascii=False, indent=2).encode("utf-8")
     from telegram import BufferedInputFile
     await update.callback_query.message.reply_document(BufferedInputFile(data, filename="naseb-backup.json"), caption="💾 نسخة احتياطية من بيانات الإعلانات.")
+    await update.callback_query.message.edit_text("✅ انبعتت النسخة الاحتياطية.\n\n🔐 بيانات التواصل الحساسة موجودة ضمن النسخة لأنها مخصصة للأدمن فقط.", reply_markup=_admin_main_keyboard())
 
 
 async def _show_orders(update: Any, context: Any) -> None:
@@ -544,6 +567,9 @@ async def _confirm_order(update: Any, context: Any, order_number: int | None) ->
             return END
         session.commit()
         user_id = order.user_telegram_id
+    if order.status != "paid":
+        await update.callback_query.edit_message_text("⚠️ ما فينا نأكد الطلب قبل ما يوصل رقم عملية الدفع وتتحول الحالة لمراجعة.", reply_markup=_admin_main_keyboard())
+        return END
     try:
         await context.application.bot.send_message(user_id, f"✅ تم تأكيد دفعتك للطلب رقم {order_number}. الصفحة رح تتابع معك.")
     except Exception:
