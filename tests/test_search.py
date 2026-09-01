@@ -62,3 +62,17 @@ def test_ai_search_accepts_sham_alias_for_damascus():
     assert filters.province == "دمشق"
     assert filters.age_min == 22
     assert filters.age_max == 28
+
+
+def test_ai_search_normalizes_marital_typos_without_dropping_filter():
+    extraction = SearchFilterExtraction(
+        gender="female",
+        province="دمشق",
+        marital_status="مطلقة",
+    )
+
+    filters = filters_from_ai(extraction, "بنت دمشق مطلقه")
+
+    assert filters.gender == "female"
+    assert filters.province == "دمشق"
+    assert filters.marital_status == "مطلقة"
