@@ -20,7 +20,7 @@ from app.database.connection import build_engine, build_session_factory
 from app.database.models import Base
 from app.database import admin_models as _admin_models  # noqa: F401 - registers additive Admin V2 tables
 from app.handlers.admin import ADD_EDIT, ADD_RAW, DELETE_REQUEST, DISABLE_REQUEST, EDIT_FIELDS, EDIT_REQUEST, SEARCH_TEXT
-from app.handlers.admin_router import ADMIN_V2_INPUT, admin_callback, admin_photo, admin_text
+from app.handlers.admin_entry import ADMIN_V2_INPUT, admin_callback, admin_photo, admin_text
 from app.handlers.client import SEARCH_CONFIRM, SEARCH_TEXT as CLIENT_SEARCH_TEXT, client_callback, client_text
 from app.handlers.payment import (
     WHATSAPP_CONFIRM,
