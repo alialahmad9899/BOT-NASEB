@@ -19,7 +19,7 @@ class Settings:
     telegram_bot_token: str
     admin_user_ids: frozenset[int]
     ai_api_key: str | None = None
-    ai_model: str = "gemini-2.5-flash-lite"
+    ai_model: str = "gemini-3.5-flash-lite"
     database_url: str | None = None
     public_base_url: str | None = None
     webhook_secret: str | None = None
@@ -51,7 +51,7 @@ class Settings:
             telegram_bot_token=token,
             admin_user_ids=frozenset(admin_user_ids),
             ai_api_key=os.getenv("AI_API_KEY") or None,
-            ai_model=os.getenv("AI_MODEL", "gemini-2.5-flash-lite").strip() or "gemini-2.5-flash-lite",
+            ai_model=os.getenv("AI_MODEL", "gemini-3.5-flash-lite").strip() or "gemini-3.5-flash-lite",
             database_url=os.getenv("DATABASE_URL") or None,
             public_base_url=(os.getenv("PUBLIC_BASE_URL") or os.getenv("RENDER_EXTERNAL_URL") or None),
             webhook_secret=os.getenv("WEBHOOK_SECRET") or None,
