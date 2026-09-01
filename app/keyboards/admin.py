@@ -54,10 +54,12 @@ def profile_actions_keyboard(request_number: int, status: str = "active") -> Inl
 
 
 def order_actions_keyboard(order_number: int) -> InlineKeyboardMarkup:
+    # Legacy callback names are retained here so old messages continue to work;
+    # the Admin V2 handler remains the preferred path for new order screens.
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔎 التفاصيل", callback_data=f"admin:v2:order:view:{order_number}"), InlineKeyboardButton("✅ تأكيد الدفع", callback_data=f"admin:v2:order:confirm:{order_number}")],
-        [InlineKeyboardButton("❌ إلغاء الطلب", callback_data=f"admin:v2:order:reject:{order_number}"), InlineKeyboardButton("🗑️ حذف الطلب", callback_data=f"admin:v2:order:delete:{order_number}")],
-        [InlineKeyboardButton("⬅️ طلبات التواصل", callback_data="admin:v2:orders:0:pending")],
+        [InlineKeyboardButton("🔎 التفاصيل", callback_data=f"admin:order:view:{order_number}"), InlineKeyboardButton("✅ تأكيد الدفع", callback_data=f"admin:order:confirm:{order_number}")],
+        [InlineKeyboardButton("❌ إلغاء الطلب", callback_data=f"admin:order:reject:{order_number}"), InlineKeyboardButton("🗑️ حذف الطلب", callback_data=f"admin:order:delete:{order_number}")],
+        [InlineKeyboardButton("⬅️ طلبات التواصل", callback_data="admin:orders")],
         [InlineKeyboardButton("⬅️ لوحة الأدمن", callback_data="admin:menu")],
     ])
 
@@ -66,30 +68,30 @@ def admin_orders_keyboard(order_numbers: list[int], has_pending: bool = True) ->
     rows = []
     for number in order_numbers:
         rows.append([
-            InlineKeyboardButton(f"🔎 {number}", callback_data=f"admin:v2:order:view:{number}"),
-            InlineKeyboardButton("✅", callback_data=f"admin:v2:order:confirm:{number}"),
-            InlineKeyboardButton("❌", callback_data=f"admin:v2:order:reject:{number}"),
-            InlineKeyboardButton("🗑️", callback_data=f"admin:v2:order:delete:{number}"),
+            InlineKeyboardButton(f"🔎 {number}", callback_data=f"admin:order:view:{number}"),
+            InlineKeyboardButton("✅", callback_data=f"admin:order:confirm:{number}"),
+            InlineKeyboardButton("❌", callback_data=f"admin:order:reject:{number}"),
+            InlineKeyboardButton("🗑️", callback_data=f"admin:order:delete:{number}"),
         ])
     if has_pending:
-        rows.append([InlineKeyboardButton("🧹 إدارة الطلبات المعلّقة", callback_data="admin:v2:orders:0:pending")])
-    rows.append([InlineKeyboardButton("🔄 تحديث القائمة", callback_data="admin:v2:orders:0:pending")])
+        rows.append([InlineKeyboardButton("🧹 إدارة الطلبات المعلّقة", callback_data="admin:orders")])
+    rows.append([InlineKeyboardButton("🔄 تحديث القائمة", callback_data="admin:orders")])
     rows.append([InlineKeyboardButton("⬅️ لوحة الأدمن", callback_data="admin:menu")])
     return InlineKeyboardMarkup(rows)
 
 
 def confirm_delete_order_keyboard(order_number: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🗑️ نعم، احذف الطلب", callback_data=f"admin:v2:order:delete:{order_number}")],
-        [InlineKeyboardButton("❌ إلغاء", callback_data=f"admin:v2:order:view:{order_number}")],
-        [InlineKeyboardButton("⬅️ طلبات التواصل", callback_data="admin:v2:orders:0:pending")],
+        [InlineKeyboardButton("🗑️ نعم، احذف الطلب", callback_data=f"admin:order:delete:confirm:{order_number}")],
+        [InlineKeyboardButton("❌ إلغاء", callback_data=f"admin:order:view:{order_number}")],
+        [InlineKeyboardButton("⬅️ طلبات التواصل", callback_data="admin:orders")],
     ])
 
 
 def confirm_delete_pending_orders_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("⚠️ إدارة المعلّقة", callback_data="admin:v2:orders:0:pending")],
-        [InlineKeyboardButton("❌ إلغاء", callback_data="admin:v2:orders:0:pending")],
+        [InlineKeyboardButton("⚠️ إدارة المعلّقة", callback_data="admin:orders")],
+        [InlineKeyboardButton("❌ إلغاء", callback_data="admin:orders")],
         [InlineKeyboardButton("⬅️ لوحة الأدمن", callback_data="admin:menu")],
     ])
 
@@ -105,13 +107,13 @@ def admin_delete_menu_keyboard() -> InlineKeyboardMarkup:
 
 def confirm_delete_all_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("⚠️ لا تستخدم الحذف المباشر", callback_data="admin:v2:profiles:0:all")],
-        [InlineKeyboardButton("❌ إلغاء", callback_data="admin:menu")],
+        [InlineKeyboardButton("⚠️ لا تستخدم الحذف المباشر", callback_data="admin:delete:all")],
+        [InlineKeyboardButton("❌ إلغاء", callback_data="admin:delete:cancel")],
     ])
 
 
 def confirm_delete_selected_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🗃️ الذهاب للأرشيف", callback_data="admin:v2:profiles:0:archived")],
-        [InlineKeyboardButton("❌ إلغاء", callback_data="admin:menu")],
+        [InlineKeyboardButton("🗃️ الذهاب للأرشيف", callback_data="admin:delete:selected")],
+        [InlineKeyboardButton("❌ إلغاء", callback_data="admin:delete:cancel")],
     ])
