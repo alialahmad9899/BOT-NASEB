@@ -30,7 +30,8 @@ from app.handlers.admin import (
     admin_photo,
     admin_text,
 )
-from app.handlers.client import PAYMENT_TX, SEARCH_CONFIRM, SEARCH_TEXT as CLIENT_SEARCH_TEXT, client_callback, client_text
+from app.handlers.client import SEARCH_CONFIRM, SEARCH_TEXT as CLIENT_SEARCH_TEXT, client_callback, client_text
+from app.handlers.payment import WHATSAPP_INPUT, payment_whatsapp_cancel, payment_whatsapp_text, request_contact_callback
 from app.handlers.start import start_command
 from app.services.gemini_runtime import GeminiAIService
 from app.services.runtime import user_message_for_error
@@ -66,12 +67,23 @@ def build_application(settings: Settings) -> Application:
         allow_reentry=True,
         per_message=False,
     )
+    payment_conversation = ConversationHandler(
+        entry_points=[CallbackQueryHandler(request_contact_callback, pattern=r"^client:request:")],
+        states={
+            WHATSAPP_INPUT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, payment_whatsapp_text),
+                CallbackQueryHandler(payment_whatsapp_cancel, pattern=r"^client:payment:whatsapp:cancel$"),
+            ],
+        },
+        fallbacks=[CommandHandler("cancel", cancel_command)],
+        allow_reentry=True,
+        per_message=False,
+    )
     client_conversation = ConversationHandler(
         entry_points=[CallbackQueryHandler(client_callback, pattern=r"^client:")],
         states={
             CLIENT_SEARCH_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, client_text), CallbackQueryHandler(client_callback, pattern=r"^client:")],
             SEARCH_CONFIRM: [CallbackQueryHandler(client_callback, pattern=r"^client:")],
-            PAYMENT_TX: [MessageHandler(filters.TEXT & ~filters.COMMAND, client_text), CallbackQueryHandler(client_callback, pattern=r"^client:")],
         },
         fallbacks=[CommandHandler("cancel", cancel_command)],
         allow_reentry=True,
@@ -80,6 +92,7 @@ def build_application(settings: Settings) -> Application:
 
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(admin_conversation)
+    application.add_handler(payment_conversation)
     application.add_handler(client_conversation)
     application.add_error_handler(application_error)
     return application
