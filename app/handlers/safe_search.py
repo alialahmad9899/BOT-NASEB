@@ -20,9 +20,17 @@ ADMIN_V2_INPUT = admin_v2.ADMIN_V2_INPUT
 
 
 def prepare_admin_search_query(raw_text: str, ai_filters: Any | None = None) -> dict[str, Any]:
-    """Build an admin search query and fix open-ended age phrases locally."""
+    """Build an admin search query and fix common Arabic colloquial phrases locally."""
     query = admin_v2._extract_admin_query(raw_text, ai_filters)
     normalized = normalize_digits(raw_text or "").strip().lower()
+
+    # Deterministic gender fallback for common plural colloquial terms.
+    if query["filters"].gender is None:
+        if re.search(r"بنات|عرايس|صبايا|فتيات|نساء", normalized):
+            query["filters"] = replace(query["filters"], gender="female")
+        elif re.search(r"شباب|شبان|عرسان|رجال", normalized):
+            query["filters"] = replace(query["filters"], gender="male")
+
     match = re.search(
         r"(?:عمر|العمر|عمرها|عمره|بعمر|سنها|سنه)\s*[:=-]?\s*(\d{1,3})\s*(?:و\s*)?(?:ما\s*)?(?:فوق|طالع|وما\s+فوق)",
         normalized,
