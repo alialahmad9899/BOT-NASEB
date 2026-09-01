@@ -33,7 +33,8 @@ CLIENT_START_TEXT = """🌸 أهلاً وسهلاً في لقاء ونصيب
 اختر الخدمة اللي بدك ياها من القائمة تحت:
 
 🔎 البحث عن عرض زواج
-💗 دورولي على شريك مناسب
+🤵 دورولي على عريس مناسب
+👰 دورولي على عروس مناسبة
 📋 تصفح العروض
 ℹ️ طريقة العمل
 """
@@ -46,6 +47,8 @@ def start_content_for_user(user_id: int, admin_user_ids: set[int] | frozenset[in
 
 
 async def start_command(update: Any, context: Any) -> None:
+    # `/start` always acts as a clean restart, even when the user is inside a conversation.
+    context.user_data.clear()
     user = update.effective_user
     message = update.effective_message
     settings = context.application.bot_data["settings"]
