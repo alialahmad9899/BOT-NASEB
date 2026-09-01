@@ -9,3 +9,4 @@ def test_settings_requires_token_and_at_least_one_admin(monkeypatch):
 
     assert settings.telegram_bot_token == "token"
     assert settings.admin_user_ids == frozenset({123})
+    assert settings.ai_model == "gemini-3.5-flash-lite"
