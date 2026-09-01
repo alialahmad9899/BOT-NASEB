@@ -64,19 +64,13 @@ def client_orders_keyboard(order_numbers: list[int]) -> InlineKeyboardMarkup:
 
 
 def client_order_detail_keyboard(order_status: str | None = None, order_number: int | None = None) -> InlineKeyboardMarkup:
-    rows = []
-    if order_status == "pending_payment" and order_number is not None:
-        rows.append([InlineKeyboardButton("💳 إدخال رقم العملية", callback_data=f"client:payment:submit:{order_number}")])
-    rows.extend([
-        [InlineKeyboardButton("⬅️ طلباتي", callback_data="client:orders")],
-        [InlineKeyboardButton("🏠 القائمة الرئيسية", callback_data="client:menu")],
-    ])
+    rows = [[InlineKeyboardButton("⬅️ طلباتي", callback_data="client:orders")]]
+    rows.append([InlineKeyboardButton("🏠 القائمة الرئيسية", callback_data="client:menu")])
     return InlineKeyboardMarkup(rows)
 
 
 def client_payment_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("💳 إدخال رقم العملية", callback_data="client:payment:submit")],
-        [InlineKeyboardButton("✖️ إلغاء إدخال العملية", callback_data="client:payment:cancel")],
+        [InlineKeyboardButton("💳 طلباتي", callback_data="client:orders")],
         [InlineKeyboardButton("🏠 القائمة الرئيسية", callback_data="client:menu")],
     ])
