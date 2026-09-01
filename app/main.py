@@ -32,6 +32,7 @@ from app.handlers.admin import (
 from app.handlers.client import PAYMENT_TX, SEARCH_TEXT as CLIENT_SEARCH_TEXT, client_callback, client_text
 from app.handlers.start import start_command
 from app.services.ai import AIService
+from app.services.gemini_runtime import GeminiAIService
 from app.services.runtime import user_message_for_error
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -48,7 +49,7 @@ def build_application(settings: Settings) -> Application:
         Base.metadata.create_all(engine)
     application.bot_data["engine"] = engine
     application.bot_data["session_factory"] = build_session_factory(engine)
-    application.bot_data["ai_service"] = AIService(settings.ai_api_key, settings.ai_model)
+    application.bot_data["ai_service"] = GeminiAIService(settings.ai_api_key, settings.ai_model)
 
     admin_conversation = ConversationHandler(
         entry_points=[CallbackQueryHandler(admin_callback, pattern=r"^admin:")],
