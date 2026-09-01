@@ -52,10 +52,12 @@ def test_pending_order_summary_is_safe_to_use_after_session_closes():
         profile = ProfileRepository(session).create(ProfileDraft(public_data=public_profile("ريم", 26, "حلب"), private_contact_data={"phone": "0933445566"}))
         session.commit()
         order = OrderRepository(session).create_contact_request(779, profile.request_number, Decimal("5.00"), "شام كاش")
+        order_number = order.order_number
+        profile_request_number = profile.request_number
         session.commit()
         summaries = OrderRepository(session).list_pending_summaries()
-        assert summaries[0]["order_number"] == order.order_number
-        assert summaries[0]["profile_request_number"] == profile.request_number
+        assert summaries[0]["order_number"] == order_number
+        assert summaries[0]["profile_request_number"] == profile_request_number
         assert summaries[0]["status"] == "pending_payment"
 
 
@@ -65,10 +67,11 @@ def test_delete_single_pending_order_does_not_delete_profile():
         session.commit()
         orders = OrderRepository(session)
         order = orders.create_contact_request(780, profile.request_number, Decimal("5.00"), "شام كاش")
-        deleted = orders.delete_order(order.order_number)
+        order_number = order.order_number
+        deleted = orders.delete_order(order_number)
         session.commit()
         assert deleted is True
-        assert orders.get(order.order_number) is None
+        assert orders.get(order_number) is None
         assert ProfileRepository(session).get(profile.request_number) is not None
 
 
@@ -82,12 +85,15 @@ def test_delete_all_pending_orders_keeps_paid_orders():
         pending1 = orders.create_contact_request(781, profile1.request_number, Decimal("5.00"), "شام كاش")
         pending2 = orders.create_contact_request(782, profile2.request_number, Decimal("5.00"), "شام كاش")
         paid = orders.create_contact_request(783, profile3.request_number, Decimal("5.00"), "شام كاش")
-        paid = orders.confirm_payment(paid.order_number)
+        pending1_number = pending1.order_number
+        pending2_number = pending2.order_number
+        paid_number = paid.order_number
+        paid = orders.confirm_payment(paid_number)
         session.commit()
         count = orders.delete_pending()
         session.commit()
         assert count == 2
-        assert orders.get(pending1.order_number) is None
-        assert orders.get(pending2.order_number) is None
-        assert orders.get(paid.order_number) is not None
-        assert orders.get(paid.order_number).status == "paid"
+        assert orders.get(pending1_number) is None
+        assert orders.get(pending2_number) is None
+        assert orders.get(paid_number) is not None
+        assert orders.get(paid_number).status == "paid"
