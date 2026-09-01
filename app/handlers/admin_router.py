@@ -17,6 +17,15 @@ END = ConversationHandler.END
 ADMIN_V2_INPUT = _legacy.ADMIN_V2_INPUT
 admin_v2 = _legacy.admin_v2
 
+# Backward-compatible exports for existing imports/tests.
+_session = _legacy._session
+_role = _legacy._role
+_manager = _legacy._manager
+_owner = _legacy._owner
+_archive_keyboard = _legacy._archive_keyboard
+_archive_with_reason = _legacy._archive_with_reason
+_show_reservations_plus = _legacy._show_reservations_plus
+
 
 def _home_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
@@ -172,9 +181,9 @@ async def admin_callback(update: Any, context: Any) -> int:
         parts = data.split(":")
         if len(parts) == 4 and parts[3] in {"ads", "orders", "reservations", "publishing", "reports", "security", "settings"}:
             return await _section_screen(update, context, parts[3])
-        if parts[3] == "ads" and len(parts) == 5 and parts[4] in {"gender", "status", "quality"}:
+        if len(parts) == 5 and parts[3] == "ads" and parts[4] in {"gender", "status", "quality"}:
             return await _ads_subsection(update, context, parts[4])
-        if parts[3] == "settings" and len(parts) == 5 and parts[4] in {"payments", "roles", "ai", "status"}:
+        if len(parts) == 5 and parts[3] == "settings" and parts[4] in {"payments", "roles", "ai", "status"}:
             return await _settings_subsection(update, context, parts[4])
     if data == "admin:v2:dashboard" or data == "admin:menu":
         return await _dashboard(update, context)
