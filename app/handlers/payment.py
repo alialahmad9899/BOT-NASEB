@@ -95,10 +95,9 @@ async def payment_whatsapp_text(update: Any, context: Any) -> int:
     await update.effective_message.reply_text(
         "✅ تم تسجيل طلب التواصل.\n\n"
         f"📌 رقم طلب التواصل: {order_number}\n"
-        f"📱 رقم الواتساب: {normalized}\n"
         "💵 قيمة الخدمة: 5 دولار\n"
         "💳 طريقة الدفع: شام كاش\n\n"
-        "📞 الخطّابة رح تتواصل معك على الواتساب المسجل لتشرحلك طريقة الدفع وتعطيك رمز/معلومات التحويل.\n\n"
+        "📞 الخطّابة رح تتواصل معك على رقم الواتساب اللي سجلته لتشرحلك طريقة الدفع وتعطيك رمز/معلومات التحويل.\n\n"
         "🔒 رقم الواتساب محفوظ عند الصفحة وما بيظهر للمستخدمين.",
         reply_markup=_payment_pending_keyboard(),
     )
@@ -111,6 +110,19 @@ async def payment_whatsapp_cancel(update: Any, context: Any) -> int:
     await query.answer()
     context.user_data.clear()
     await query.edit_message_text("✅ تم إلغاء طلب التواصل.", reply_markup=_payment_pending_keyboard())
+    return END
+
+
+async def stale_payment_callback(update: Any, context: Any) -> int:
+    """Handle old transaction buttons still present in messages sent before this release."""
+    query = update.callback_query
+    await query.answer("تم تغيير طريقة الدفع. ما عاد نطلب رقم العملية.", show_alert=True)
+    await query.edit_message_text(
+        "ℹ️ طريقة الدفع تغيرت. ما عاد في حاجة لإرسال رقم عملية.\n\n"
+        "📱 إذا بدك تتابع طلب التواصل، افتح الإعلان من جديد وسجّل رقم الواتساب.",
+        reply_markup=_payment_pending_keyboard(),
+    )
+    context.user_data.clear()
     return END
 
 
