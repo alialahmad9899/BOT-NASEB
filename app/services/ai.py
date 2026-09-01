@@ -150,7 +150,7 @@ def merge_private_contacts(ai_extraction: ProfileExtraction, deterministic_extra
 def normalize_profile_extraction(extraction: ProfileExtraction) -> ProfileExtraction:
     from app.services.profiles import normalize_digits, normalize_gender
     children_count = extraction.children_count if extraction.children_count is None or extraction.children_count >= 0 else None
-    updates = {
+    return extraction.model_copy(update={
         "gender": normalize_gender(extraction.gender) if extraction.gender else None,
         "name": _normalize_name(extraction.name),
         "residence": _normalize_residence(extraction.residence),
@@ -165,8 +165,7 @@ def normalize_profile_extraction(extraction: ProfileExtraction) -> ProfileExtrac
         "phone": normalize_digits(extraction.phone.strip()) if extraction.phone else None,
         "telegram_username": extraction.telegram_username.strip().lstrip("@") if extraction.telegram_username else None,
         "whatsapp": normalize_digits(extraction.whatsapp.strip()) if extraction.whatsapp else None,
-    }
-    return extraction.model_copy(update=updates)
+    })
 
 
 class AIService:
@@ -242,6 +241,7 @@ def basic_profile_extraction(raw_text: str, photo_file_id: str | None = None) ->
 
     normalized = normalize_digits(raw_text.replace("،", " ")).strip()
     lower = normalized.lower()
+    lines = [line.strip() for line in normalized.splitlines() if line.strip()]
     gender = "female" if re.search(r"بنت|صبية|فتاة|عروس|أنثى|انثى", lower) else "male" if re.search(r"شب|شاب|رجل|عريس|ذكر", lower) else None
 
     age = None
@@ -258,10 +258,24 @@ def basic_profile_extraction(raw_text: str, photo_file_id: str | None = None) ->
     )
     for pattern in patterns:
         match = re.search(pattern, normalized, re.I)
-        if match:
-            candidate = match.group(1).strip(" -–:،")
-            if 1 <= len(candidate) <= 100:
-                residence = _normalize_residence(candidate)
+        if not match:
+            continue
+        candidate = match.group(1).strip(" -–:،")
+        if candidate and candidate not in {"سوريا", "سورية"} and 1 <= len(candidate) <= 100:
+            residence = _normalize_residence(candidate)
+            break
+    if residence in {"سوريا", "سورية"}:
+        residence = None
+
+    if residence is None:
+        known_places = (
+            "ريف دمشق", "ريف حلب", "ريف حمص", "ريف حماة", "ريف إدلب",
+            "دمشق", "حلب", "حمص", "حماة", "اللاذقية", "طرطوس", "إدلب", "الرقة",
+            "دير الزور", "الحسكة", "درعا", "السويداء", "القنيطرة", "جرمانا",
+        )
+        for line in lines:
+            if any(place == line or place in line for place in known_places):
+                residence = _normalize_residence(line)
                 break
 
     children_count = 0 if re.search(r"(?:ما\s*عندي|ماعندي|ما\s*عندها|ماعندها|ما\s*عنده|ماعنده|بدون)\s+(?:ولاد|أولاد|اولاد|أطفال|اطفال)", lower) else None
@@ -307,6 +321,18 @@ def basic_profile_extraction(raw_text: str, photo_file_id: str | None = None) ->
     if match:
         candidate = re.split(r"\s+(?:عمري|من|ساكن|ساكنة|مقيم|مقيمة)\b", match.group(1).strip(), maxsplit=1)[0].strip()
         name = _normalize_name(candidate)
+    if name is None:
+        excluded = {"بنت", "شاب", "صبية", "عروس", "عريس", "أنثى", "انثى", "ذكر", "سوريا", "سورية"}
+        for line in lines:
+            if line in excluded or len(line) > 40 or re.search(r"\d", line):
+                continue
+            if any(token in line for token in ("بدي", "بدها", "بده", "من", "ساكن", "مقيم", "عايش", "مطلقة", "عزباء", "متزوج", "مدرسة", "طالبة", "رقم")):
+                continue
+            if line in {"ريف دمشق", "ريف حلب", "ريف حمص", "ريف حماة", "ريف إدلب", "دمشق", "حلب", "حمص", "حماة", "اللاذقية", "طرطوس", "إدلب", "الرقة", "دير الزور", "الحسكة", "درعا", "السويداء", "القنيطرة", "جرمانا"}:
+                continue
+            name = _normalize_name(line)
+            if name:
+                break
 
     phone_match = re.search(r"(?:\+?963\s?)?(?:0?9|09)[0-9xX][0-9xX -]{5,}", normalized)
     phone = phone_match.group(0).strip() if phone_match else None
