@@ -213,8 +213,8 @@ async def _execute_pending_search(update: Any, context: Any) -> int:
     with _session(context) as session:
         rows = ProfileRepository(session).search(filters)
     request_numbers = [row.request_number for row in rows]
-    context.user_data.clear()
     if not rows:
+        context.user_data.clear()
         await update.callback_query.edit_message_text("🔎 ما لقينا عروض مطابقة لهالمواصفات. فيك تخفف شرط أو توسّع العمر أو مكان السكن.", reply_markup=client_no_results_keyboard())
         return END
     context.user_data["last_result_numbers"] = request_numbers
@@ -234,7 +234,7 @@ async def _show_saved_results(update: Any, context: Any) -> int:
         await update.callback_query.edit_message_text("🔎 ما عاد في نتائج متاحة من البحث السابق.", reply_markup=client_main_keyboard())
         return END
     context.user_data["last_result_numbers"] = [row.request_number for row in rows]
-    await update.callback_query.edit_message_text(_result_text(rows), reply_markup=client_results_history_keyboard())
+    await update.callback_query.edit_message_text(_result_text(rows), reply_markup=client_results_keyboard([row.request_number for row in rows]))
     return END
 
 
