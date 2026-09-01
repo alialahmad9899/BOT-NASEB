@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from decimal import Decimal
 from typing import Any
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ConversationHandler
 
 from app.database.repositories import OrderRepository, ProfileRepository
+from app.services.admin_meta import get_order_meta, payment_method, service_price
 from app.services.payment import normalize_whatsapp
 
 WHATSAPP_INPUT = 40
@@ -63,6 +63,8 @@ async def request_contact_callback(update: Any, context: Any) -> int:
         return END
     with _session(context) as session:
         profile = ProfileRepository(session).get(request_number)
+        amount = service_price(session)
+        method = payment_method(session)
     if profile is None or profile.status == "inactive":
         await query.edit_message_text("❌ هالإعلان ما عاد متاح.", reply_markup=_payment_pending_keyboard())
         return END
@@ -71,9 +73,11 @@ async def request_contact_callback(update: Any, context: Any) -> int:
         return END
     context.user_data.clear()
     context.user_data["payment_profile_request"] = request_number
+    context.user_data["payment_amount"] = str(amount)
+    context.user_data["payment_method"] = method
     await query.edit_message_text(
         "📩 طلب التواصل\n\n"
-        "قيمة الخدمة 5 دولار.\n\n"
+        f"قيمة الخدمة {amount:g} دولار.\n\n"
         "حتى تتواصل معك الخطّابة بخصوص الدفع،\n"
         "ابعت رقم الواتساب اللي بدك نحكيك عليه.\n\n"
         "📱 اكتب رقم واتساب:",
@@ -125,11 +129,13 @@ async def payment_whatsapp_confirm(update: Any, context: Any) -> int:
 
     user = update.effective_user
     with _session(context) as session:
+        amount = service_price(session)
+        method = payment_method(session)
         order = OrderRepository(session).create_contact_request(
             user.id,
             int(request_number),
-            Decimal("5.00"),
-            "شام كاش",
+            amount,
+            method,
         )
         if order is None:
             await query.edit_message_text(
@@ -138,6 +144,10 @@ async def payment_whatsapp_confirm(update: Any, context: Any) -> int:
             )
             return END
         order.whatsapp = whatsapp
+        meta = get_order_meta(session, int(order.id), create=True)
+        if meta:
+            meta.payment_status = "pending"
+            meta.contact_status = "new"
         session.commit()
         order_number = int(order.order_number)
 
@@ -146,11 +156,11 @@ async def payment_whatsapp_confirm(update: Any, context: Any) -> int:
         "✅ تم تسجيل طلبك\n\n"
         f"📌 رقم الطلب: {order_number}\n\n"
         "📞 الخطّابة رح تتواصل معك على الواتساب\n"
-        "وتشرحلك طريقة الدفع عبر شام كاش.\n\n"
+        f"وتشرحلك طريقة الدفع عبر {method}.\n\n"
         "💛 شكراً لثقتك بصفحة لقاء ونصيب.",
         reply_markup=_payment_pending_keyboard(),
     )
-    await _notify_admins(context, order_number, int(request_number), user, whatsapp)
+    await _notify_admins(context, order_number, int(request_number), user, whatsapp, amount, method)
     return END
 
 
@@ -193,7 +203,7 @@ async def stale_payment_callback(update: Any, context: Any) -> int:
     return END
 
 
-async def _notify_admins(context: Any, order_number: int, profile_request: int, user: Any, whatsapp: str) -> None:
+async def _notify_admins(context: Any, order_number: int, profile_request: int, user: Any, whatsapp: str, amount, method: str) -> None:
     username = f"@{user.username}" if getattr(user, "username", None) else "بدون Username"
     display_name = " ".join(
         part for part in [getattr(user, "first_name", None), getattr(user, "last_name", None)] if part
@@ -205,13 +215,13 @@ async def _notify_admins(context: Any, order_number: int, profile_request: int, 
                 "💗 طلب تواصل جديد\n\n"
                 f"📌 رقم الطلب: {order_number}\n"
                 f"📌 الإعلان المطلوب: {profile_request}\n"
-                "💵 قيمة الخدمة: 5 دولار\n"
-                "💳 طريقة الدفع: شام كاش\n\n"
+                f"💵 قيمة الخدمة: {amount:g} دولار\n"
+                f"💳 طريقة الدفع: {method}\n\n"
                 f"👤 العميل: {display_name}\n"
                 f"🔹 Username: {username}\n"
                 f"🆔 Telegram ID: {user.id}\n"
                 f"📱 WhatsApp: {whatsapp}\n\n"
-                "📞 الخطّابة تتواصل معه على الواتساب وتشرحله طريقة الدفع.\n"
+                f"📞 الخطّابة تتواصل معه على الواتساب وتشرحله طريقة الدفع عبر {method}.\n"
                 "⚠️ لا يوجد إدخال لرقم عملية؛ متابعة الدفع تتم يدوياً.",
             )
         except Exception:
