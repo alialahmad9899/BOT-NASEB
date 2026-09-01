@@ -83,13 +83,12 @@ def load_admin_order_rows(session, page: int, filter_name: str, limit: int = 10)
 
 
 def load_client_order_rows(session, user_id: int, limit: int = 20) -> list[dict[str, Any]]:
-    orders = list(
-        session.scalars(
-            select(Order)
-            .where(Order.user_telegram_id == user_id)
-            .order_by(desc(Order.created_at))
-            .limit(max(1, min(limit, 50)))
-        ).all()
+    orders = list(session.scalars(
+        select(Order)
+        .where(Order.user_telegram_id == user_id)
+        .order_by(desc(Order.created_at))
+        .limit(max(1, min(limit, 50)))
+    ).all())
     return [
         {
             "order_number": int(order.order_number),
