@@ -55,7 +55,40 @@ def profile_actions_keyboard(request_number: int, status: str = "active") -> Inl
 def order_actions_keyboard(order_number: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🔎 التفاصيل", callback_data=f"admin:order:view:{order_number}"), InlineKeyboardButton("✅ تأكيد الدفع", callback_data=f"admin:order:confirm:{order_number}")],
-        [InlineKeyboardButton("❌ رفض الدفع", callback_data=f"admin:order:reject:{order_number}")],
+        [InlineKeyboardButton("❌ إلغاء الطلب", callback_data=f"admin:order:reject:{order_number}"), InlineKeyboardButton("🗑️ حذف الطلب", callback_data=f"admin:order:delete:{order_number}")],
+        [InlineKeyboardButton("⬅️ طلبات التواصل", callback_data="admin:orders")],
+        [InlineKeyboardButton("⬅️ لوحة الأدمن", callback_data="admin:menu")],
+    ])
+
+
+def admin_orders_keyboard(order_numbers: list[int], has_pending: bool = True) -> InlineKeyboardMarkup:
+    rows = []
+    for number in order_numbers:
+        rows.append([
+            InlineKeyboardButton(f"🔎 {number}", callback_data=f"admin:order:view:{number}"),
+            InlineKeyboardButton("✅", callback_data=f"admin:order:confirm:{number}"),
+            InlineKeyboardButton("❌", callback_data=f"admin:order:reject:{number}"),
+            InlineKeyboardButton("🗑️", callback_data=f"admin:order:delete:{number}"),
+        ])
+    if has_pending:
+        rows.append([InlineKeyboardButton("🧹 حذف كل الطلبات المعلّقة", callback_data="admin:orders:delete:pending")])
+    rows.append([InlineKeyboardButton("🔄 تحديث القائمة", callback_data="admin:orders")])
+    rows.append([InlineKeyboardButton("⬅️ لوحة الأدمن", callback_data="admin:menu")])
+    return InlineKeyboardMarkup(rows)
+
+
+def confirm_delete_order_keyboard(order_number: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🗑️ نعم، احذف الطلب", callback_data=f"admin:order:delete:confirm:{order_number}")],
+        [InlineKeyboardButton("❌ إلغاء", callback_data=f"admin:order:view:{order_number}")],
+        [InlineKeyboardButton("⬅️ طلبات التواصل", callback_data="admin:orders")],
+    ])
+
+
+def confirm_delete_pending_orders_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("⚠️ نعم، احذف كل المعلّقة", callback_data="admin:orders:delete:pending:confirm")],
+        [InlineKeyboardButton("❌ إلغاء", callback_data="admin:orders")],
         [InlineKeyboardButton("⬅️ لوحة الأدمن", callback_data="admin:menu")],
     ])
 

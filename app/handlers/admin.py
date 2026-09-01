@@ -67,6 +67,21 @@ def _confirm_delete_selected_keyboard():
     return confirm_delete_selected_keyboard()
 
 
+def _admin_orders_keyboard(order_numbers: list[int]) -> Any:
+    from app.keyboards.admin import admin_orders_keyboard
+    return admin_orders_keyboard(order_numbers, has_pending=bool(order_numbers))
+
+
+def _confirm_delete_order_keyboard(order_number: int):
+    from app.keyboards.admin import confirm_delete_order_keyboard
+    return confirm_delete_order_keyboard(order_number)
+
+
+def _confirm_delete_pending_orders_keyboard():
+    from app.keyboards.admin import confirm_delete_pending_orders_keyboard
+    return confirm_delete_pending_orders_keyboard()
+
+
 def admin_action_allowed(user_id: int, admin_user_ids: set[int] | frozenset[int]) -> bool:
     return is_admin(user_id, admin_user_ids)
 
@@ -225,8 +240,53 @@ async def admin_callback(update: Any, context: Any) -> int:
     if data == "admin:backup":
         await _send_backup(update, context)
         return END
+
     if data == "admin:orders":
         await _show_orders(update, context)
+        return END
+    if data == "admin:orders:delete:pending":
+        with _session(context) as session:
+            pending_count = len(OrderRepository(session).list_pending(limit=50))
+        if pending_count == 0:
+            await query.edit_message_text("💳 ما في طلبات معلّقة لنحذفها.", reply_markup=_admin_main_keyboard())
+            return END
+        await query.edit_message_text(
+            f"⚠️ رح ينحذف نهائياً كل طلبات التواصل المعلّقة.\n\nعدد الطلبات: {pending_count}\n\nالطلبات المدفوعة ما رح تنحذف.\n\nمتأكد؟",
+            reply_markup=_confirm_delete_pending_orders_keyboard(),
+        )
+        return END
+    if data == "admin:orders:delete:pending:confirm":
+        with _session(context) as session:
+            count = OrderRepository(session).delete_pending()
+            session.commit()
+        await query.edit_message_text(f"✅ تم حذف {count} طلب تواصل معلّق نهائياً.\n\nالطلبات المدفوعة بقيت محفوظة.", reply_markup=_admin_main_keyboard())
+        return END
+    if data.startswith("admin:order:delete:confirm:"):
+        number = _number_suffix(data)
+        if number is None:
+            return END
+        with _session(context) as session:
+            deleted = OrderRepository(session).delete_order(number)
+            if deleted:
+                session.commit()
+        if not deleted:
+            await query.edit_message_text("⚠️ ما قدرنا نحذف هالطلب. يمكن تمت معالجته أو انحذف من قبل.", reply_markup=_admin_main_keyboard())
+            return END
+        await query.edit_message_text(f"✅ تم حذف طلب التواصل رقم {number} نهائياً.", reply_markup=_admin_main_keyboard())
+        return END
+    if data.startswith("admin:order:delete:"):
+        number = _number_suffix(data)
+        if number is None:
+            return END
+        with _session(context) as session:
+            order = OrderRepository(session).get(number)
+        if order is None:
+            await query.edit_message_text("❌ ما لقينا طلب التواصل.", reply_markup=_admin_main_keyboard())
+            return END
+        if order.status in {"paid", "rejected"}:
+            await query.edit_message_text("⚠️ الطلب تمت معالجته، وما عاد فينا نحذفه من مسار الطلبات المعلّقة.", reply_markup=_admin_main_keyboard())
+            return END
+        await query.edit_message_text(f"⚠️ رح ينحذف طلب التواصل رقم {number} نهائياً.\n\nمتأكد؟", reply_markup=_confirm_delete_order_keyboard(number))
         return END
     if data.startswith("admin:order:view:"):
         return await _view_order(update, context, _number_suffix(data))
@@ -532,29 +592,24 @@ async def _send_backup(update: Any, context: Any) -> None:
 
 async def _show_orders(update: Any, context: Any) -> None:
     with _session(context) as session:
-        orders = OrderRepository(session).list_pending()
-    if not orders:
-        await update.callback_query.edit_message_text("💳 ما في طلبات معلّقة حالياً.", reply_markup=_admin_main_keyboard())
+        summaries = OrderRepository(session).list_pending_summaries()
+    if not summaries:
+        await update.callback_query.edit_message_text("💳 ما في طلبات تواصل معلّقة حالياً.", reply_markup=_admin_main_keyboard())
         return
-    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-    status_labels = {"pending_payment": "بانتظار الدفع", "pending_review": "بانتظار مراجعة الدفع"}
-    buttons = []
-    for order in orders:
-        row = [InlineKeyboardButton(f"🔎 {order.order_number}", callback_data=f"admin:order:view:{order.order_number}")]
-        if order.status == "pending_review":
-            row.extend([
-                InlineKeyboardButton("✅", callback_data=f"admin:order:confirm:{order.order_number}"),
-                InlineKeyboardButton("❌", callback_data=f"admin:order:reject:{order.order_number}"),
-            ])
-        else:
-            row.append(InlineKeyboardButton("❌", callback_data=f"admin:order:reject:{order.order_number}"))
-        buttons.append(row)
-    buttons.append([InlineKeyboardButton("⬅️ لوحة الأدمن", callback_data="admin:menu")])
-    text = "💳 الطلبات المعلّقة:\n\n" + "\n".join(
-        f"📌 طلب دفع {order.order_number} — الإعلان {order.profile.request_number} — {status_labels.get(order.status, order.status)}"
-        for order in orders
+
+    status_labels = {"pending_payment": "بانتظار الدفع", "pending_review": "بانتظار المراجعة"}
+    text_lines = ["💳 طلبات التواصل المعلّقة:", ""]
+    for item in summaries:
+        text_lines.append(
+            f"📌 طلب دفع {item['order_number']} — الإعلان {item['profile_request_number']} — "
+            f"{status_labels.get(str(item['status']), str(item['status']))}"
+        )
+    text_lines.append("")
+    text_lines.append("📱 كل طلب محفوظ معه رقم واتساب العميل للتواصل من الخطّابة.")
+    await update.callback_query.edit_message_text(
+        "\n".join(text_lines),
+        reply_markup=_admin_orders_keyboard([int(item["order_number"]) for item in summaries if item["order_number"] is not None]),
     )
-    await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons))
 
 
 async def _view_order(update: Any, context: Any, order_number: int | None) -> int:
@@ -563,11 +618,24 @@ async def _view_order(update: Any, context: Any, order_number: int | None) -> in
     with _session(context) as session:
         order = OrderRepository(session).get(order_number)
         if order is None:
-            await update.callback_query.edit_message_text("❌ ما لقينا طلب الدفع.", reply_markup=_admin_main_keyboard())
+            await update.callback_query.edit_message_text("❌ ما لقينا طلب التواصل.", reply_markup=_admin_main_keyboard())
             return END
         profile = profile_to_dict(order.profile, order.profile.contact)
-    status_labels = {"pending_payment": "بانتظار الدفع", "pending_review": "بانتظار مراجعة الدفع", "paid": "مدفوع", "rejected": "مرفوض"}
-    text = (f"💳 طلب الدفع رقم {order.order_number}\n" f"👤 Telegram User ID: {order.user_telegram_id}\n" f"💵 المبلغ: {order.amount_usd} USD\n" f"💳 طريقة الدفع: {order.payment_method}\n" f"🧾 رقم العملية: {order.transaction_id or 'لم يُرسل بعد'}\n" f"📊 الحالة: {status_labels.get(order.status, order.status)}\n\n" + format_admin_profile(profile))
+        whatsapp = order.whatsapp
+        user_id = order.user_telegram_id
+        amount = order.amount_usd
+        payment_method = order.payment_method
+        status = order.status
+    status_labels = {"pending_payment": "بانتظار تواصل الخطّابة/الدفع", "pending_review": "بانتظار المراجعة", "paid": "مدفوع", "rejected": "ملغى"}
+    text = (
+        f"💳 طلب التواصل رقم {order_number}\n"
+        f"👤 Telegram User ID: {user_id}\n"
+        f"📱 WhatsApp العميل: {whatsapp or 'غير مسجل'}\n"
+        f"💵 المبلغ: {amount} USD\n"
+        f"💳 طريقة الدفع: {payment_method}\n"
+        f"📊 الحالة: {status_labels.get(status, status)}\n\n"
+        + format_admin_profile(profile)
+    )
     await update.callback_query.edit_message_text(text, reply_markup=_order_actions_keyboard(order_number))
     return END
 
@@ -581,17 +649,17 @@ async def _confirm_order(update: Any, context: Any, order_number: int | None) ->
         if current is None:
             await update.callback_query.edit_message_text("❌ ما لقينا الطلب.", reply_markup=_admin_main_keyboard())
             return END
-        if current.status != "pending_review" or not current.transaction_id:
-            await update.callback_query.edit_message_text("⚠️ ما فينا نأكد الطلب قبل ما يوصل رقم العملية وتتحول الحالة لمراجعة الدفع.", reply_markup=_admin_main_keyboard())
+        if current.status not in {"pending_payment", "pending_review"}:
+            await update.callback_query.edit_message_text("⚠️ هالطلب تمت معالجته من قبل.", reply_markup=_admin_main_keyboard())
             return END
         order = repo.confirm_payment(order_number)
         session.commit()
         user_id = order.user_telegram_id
     try:
-        await context.application.bot.send_message(user_id, f"✅ تم تأكيد دفعتك للطلب رقم {order_number}. الصفحة رح تتابع معك.")
+        await context.application.bot.send_message(user_id, f"✅ تم تأكيد طلب التواصل رقم {order_number}. الصفحة رح تتابع معك.")
     except Exception:
         pass
-    await update.callback_query.edit_message_text(f"✅ تم تأكيد الدفع للطلب رقم {order_number}.", reply_markup=_admin_main_keyboard())
+    await update.callback_query.edit_message_text(f"✅ تم تأكيد طلب التواصل رقم {order_number}.", reply_markup=_admin_main_keyboard())
     return END
 
 
@@ -607,14 +675,14 @@ async def _reject_order(update: Any, context: Any, order_number: int | None) -> 
         if current.status in {"paid", "rejected"}:
             await update.callback_query.edit_message_text("⚠️ هالطلب تمت معالجته من قبل.", reply_markup=_admin_main_keyboard())
             return END
-        order = repo.reject_payment(order_number, "رفض يدوي من الأدمن")
+        order = repo.reject_payment(order_number, "إلغاء يدوي من الأدمن")
         session.commit()
         user_id = order.user_telegram_id
     try:
-        await context.application.bot.send_message(user_id, f"❌ تم رفض الدفع للطلب رقم {order_number}. إذا في مشكلة تواصل مع الصفحة.")
+        await context.application.bot.send_message(user_id, f"❌ تم إلغاء طلب التواصل رقم {order_number}. إذا في مشكلة تواصل مع الصفحة.")
     except Exception:
         pass
-    await update.callback_query.edit_message_text(f"❌ تم رفض الدفع للطلب رقم {order_number}.", reply_markup=_admin_main_keyboard())
+    await update.callback_query.edit_message_text(f"❌ تم إلغاء طلب التواصل رقم {order_number}.", reply_markup=_admin_main_keyboard())
     return END
 
 
