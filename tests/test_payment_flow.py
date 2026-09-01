@@ -39,8 +39,8 @@ def test_duplicate_pending_contact_request_reuses_existing_order():
         assert first.order_number == second.order_number
 
 
-def test_client_payment_keyboard_has_clear_exit_and_submission_actions():
+def test_client_payment_keyboard_has_no_transaction_submission_action():
     callbacks = [button.callback_data for row in client_payment_keyboard().inline_keyboard for button in row]
-    assert "client:payment:submit" in callbacks
-    assert "client:payment:cancel" in callbacks
+    assert not any(callback.startswith("client:payment:submit") for callback in callbacks)
+    assert "client:orders" in callbacks
     assert "client:menu" in callbacks
