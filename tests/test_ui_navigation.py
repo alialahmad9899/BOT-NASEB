@@ -17,8 +17,8 @@ def test_client_main_offers_gender_specific_match_actions():
 def test_client_search_and_results_have_main_menu_navigation():
     assert "⬅️ القائمة الرئيسية" in _labels(client_search_keyboard())
     assert "🏠 الرئيسية" not in _labels(client_search_keyboard())
-    assert "⬅️ القائمة الرئيسية" in _labels(client_results_keyboard([101]))
-    assert "⬅️ القائمة الرئيسية" in _labels(client_profile_keyboard(101))
+    assert "🏠 الرئيسية" in _labels(client_results_keyboard([101]))
+    assert "🏠 الرئيسية" in _labels(client_profile_keyboard(101))
 
 
 def test_reserved_profile_hides_contact_request():
