@@ -59,24 +59,21 @@ def client_profile_keyboard(request_number: int, status: str = "active", has_res
     return InlineKeyboardMarkup(rows)
 
 
-def client_results_history_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔄 بحث جديد", callback_data="client:search")],
-        [InlineKeyboardButton("⬅️ القائمة الرئيسية", callback_data="client:menu")],
-    ])
-
-
 def client_orders_keyboard(order_numbers: list[int]) -> InlineKeyboardMarkup:
     rows = [[InlineKeyboardButton(f"💳 طلب دفع {number}", callback_data=f"client:order:view:{number}")] for number in order_numbers]
     rows.append([InlineKeyboardButton("⬅️ القائمة الرئيسية", callback_data="client:menu")])
     return InlineKeyboardMarkup(rows)
 
 
-def client_order_detail_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
+def client_order_detail_keyboard(order_status: str | None = None) -> InlineKeyboardMarkup:
+    rows = []
+    if order_status == "pending_payment":
+        rows.append([InlineKeyboardButton("💳 إدخال رقم العملية", callback_data="client:payment:submit")])
+    rows.extend([
         [InlineKeyboardButton("⬅️ طلباتي", callback_data="client:orders")],
         [InlineKeyboardButton("🏠 القائمة الرئيسية", callback_data="client:menu")],
     ])
+    return InlineKeyboardMarkup(rows)
 
 
 def client_payment_keyboard() -> InlineKeyboardMarkup:
