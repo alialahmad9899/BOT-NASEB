@@ -20,6 +20,21 @@ def client_search_keyboard() -> InlineKeyboardMarkup:
     ])
 
 
+def client_search_confirm_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ ابحث بهالمواصفات", callback_data="client:search:execute")],
+        [InlineKeyboardButton("✏️ عدّل البحث", callback_data="client:search:edit")],
+        [InlineKeyboardButton("⬅️ القائمة الرئيسية", callback_data="client:menu")],
+    ])
+
+
+def client_no_results_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔄 عدّل البحث", callback_data="client:search")],
+        [InlineKeyboardButton("⬅️ القائمة الرئيسية", callback_data="client:menu")],
+    ])
+
+
 def client_results_keyboard(request_numbers: list[int]) -> InlineKeyboardMarkup:
     rows = [[InlineKeyboardButton(f"📌 عرض الطلب {number}", callback_data=f"client:profile:{number}")] for number in request_numbers]
     rows.extend([
@@ -49,12 +64,15 @@ def client_orders_keyboard(order_numbers: list[int]) -> InlineKeyboardMarkup:
 
 
 def client_order_detail_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ طلباتي", callback_data="client:orders")], [InlineKeyboardButton("🏠 القائمة الرئيسية", callback_data="client:menu")]])
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("⬅️ طلباتي", callback_data="client:orders")],
+        [InlineKeyboardButton("🏠 القائمة الرئيسية", callback_data="client:menu")],
+    ])
 
 
 def client_payment_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("💳 إدخال رقم العملية", callback_data="client:payment:submit")],
-        [InlineKeyboardButton("❌ إلغاء طلب الدفع", callback_data="client:payment:cancel")],
+        [InlineKeyboardButton("✖️ إلغاء إدخال العملية", callback_data="client:payment:cancel")],
         [InlineKeyboardButton("🏠 القائمة الرئيسية", callback_data="client:menu")],
     ])
