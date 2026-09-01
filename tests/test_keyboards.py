@@ -13,8 +13,10 @@ def _callback_data(markup):
 def test_client_main_has_explicit_bride_and_groom_search_options():
     texts = _button_texts(client_main_keyboard())
 
-    assert "🤵 دورولي على عريس مناسب" in texts
-    assert "👰 دورولي على عروس مناسبة" in texts
+    assert "🤵 بدي عريس" in texts
+    assert "💗 بدي عروس" in texts
+    assert "🤵 دورولي على عريس مناسب" not in texts
+    assert "👰 دورولي على عروس مناسبة" not in texts
 
 
 def test_client_search_has_main_menu_back_button():
