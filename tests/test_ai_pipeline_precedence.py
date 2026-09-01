@@ -21,7 +21,7 @@ class FakeAI(AIService):
 
 def test_configured_ai_is_called_before_local_fallback():
     async def run():
-        expected = ProfileExtraction(gender="female", name="آية", age=25, province="دمشق")
+        expected = ProfileExtraction(gender="female", name="آية", age=25, residence="دمشق")
         ai = FakeAI(result=expected)
         deterministic = basic_profile_extraction("آية\nعمري 25\nدمشق\n09xxxxxxxx")
 
@@ -30,7 +30,7 @@ def test_configured_ai_is_called_before_local_fallback():
         assert ai.called is True
         assert result.name == "آية"
         assert result.age == 25
-        assert result.province == "دمشق"
+        assert result.residence == "دمشق"
 
     asyncio.run(run())
 
@@ -50,5 +50,5 @@ def test_local_fallback_understands_common_syrian_age_phrase():
     parsed = basic_profile_extraction("اسمي آية\nعمري 25 من دمشق\nبدي شب محترم وطويل\n09xxxxxxxx")
     assert parsed.name == "آية"
     assert parsed.age == 25
-    assert parsed.province == "دمشق"
+    assert parsed.residence == "دمشق"
     assert parsed.phone == "09xxxxxxxx"
