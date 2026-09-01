@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session
 
 from app.database.models import Profile, ProfileContact
 
+REQUEST_NUMBER_OFFSET = 100
+
 
 @dataclass(frozen=True)
 class DuplicateMatch:
@@ -27,6 +29,13 @@ def _sim(a: str | None, b: str | None) -> float:
     return SequenceMatcher(None, a.strip().lower(), b.strip().lower()).ratio()
 
 
+def _display_request_number(profile: Profile) -> int:
+    """Return the normal public request number, even for unsaved test drafts."""
+    if profile.request_number is not None:
+        return int(profile.request_number)
+    return REQUEST_NUMBER_OFFSET + int(profile.id)
+
+
 def find_profile_duplicates(session: Session, candidate, limit: int = 5) -> list[DuplicateMatch]:
     public = candidate.public_data
     private = candidate.private_contact_data
@@ -40,7 +49,11 @@ def find_profile_duplicates(session: Session, candidate, limit: int = 5) -> list
         contact = session.get(ProfileContact, profile.id)
         reasons: list[str] = []
         score = 0
-        existing_contacts = {str(getattr(contact, k)).strip() for k in ("phone", "whatsapp") if contact and getattr(contact, k)}
+        existing_contacts = {
+            str(getattr(contact, k)).strip()
+            for k in ("phone", "whatsapp")
+            if contact and getattr(contact, k)
+        }
         if candidate_contacts & existing_contacts:
             score += 100
             reasons.append("رقم التواصل مطابق")
@@ -58,6 +71,15 @@ def find_profile_duplicates(session: Session, candidate, limit: int = 5) -> list
             score += 25
             reasons.append("الاسم متشابه")
         if score >= 45:
-            matches.append(DuplicateMatch(int(profile.request_number), min(100, score), tuple(reasons), profile.name, profile.age, profile.residence))
+            matches.append(
+                DuplicateMatch(
+                    _display_request_number(profile),
+                    min(100, score),
+                    tuple(reasons),
+                    profile.name,
+                    profile.age,
+                    profile.residence,
+                )
+            )
     matches.sort(key=lambda item: (-item.score, item.request_number))
     return matches[: max(1, min(limit, 10))]
