@@ -24,6 +24,12 @@ def admin_main_keyboard() -> InlineKeyboardMarkup:
     )
 
 
+def back_to_admin_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("⬅️ لوحة الأدمن", callback_data="admin:menu")],
+    ])
+
+
 def add_preview_keyboard(can_save: bool = True) -> InlineKeyboardMarkup:
     rows = []
     if can_save:
@@ -31,6 +37,7 @@ def add_preview_keyboard(can_save: bool = True) -> InlineKeyboardMarkup:
     rows.extend([
         [InlineKeyboardButton("✏️ تعديل البيانات", callback_data="admin:add:edit")],
         [InlineKeyboardButton("❌ إلغاء", callback_data="admin:add:cancel")],
+        [InlineKeyboardButton("⬅️ لوحة الأدمن", callback_data="admin:menu")],
     ])
     return InlineKeyboardMarkup(rows)
 
@@ -40,7 +47,8 @@ def confirm_disable_keyboard(request_number: int) -> InlineKeyboardMarkup:
         [
             InlineKeyboardButton("🗑️ نعم، عطّل الإعلان", callback_data=f"admin:disable:confirm:{request_number}"),
             InlineKeyboardButton("❌ لا", callback_data="admin:disable:cancel"),
-        ]
+        ],
+        [InlineKeyboardButton("⬅️ لوحة الأدمن", callback_data="admin:menu")],
     ])
 
 
@@ -49,7 +57,8 @@ def profile_actions_keyboard(request_number: int) -> InlineKeyboardMarkup:
         [
             InlineKeyboardButton("✏️ تعديل", callback_data=f"admin:edit:{request_number}"),
             InlineKeyboardButton("🗑️ تعطيل", callback_data=f"admin:disable:{request_number}"),
-        ]
+        ],
+        [InlineKeyboardButton("⬅️ لوحة الأدمن", callback_data="admin:menu")],
     ])
 
 
@@ -60,4 +69,5 @@ def order_actions_keyboard(order_number: int) -> InlineKeyboardMarkup:
             InlineKeyboardButton("✅ تأكيد الدفع", callback_data=f"admin:order:confirm:{order_number}"),
         ],
         [InlineKeyboardButton("❌ رفض الدفع", callback_data=f"admin:order:reject:{order_number}")],
+        [InlineKeyboardButton("⬅️ لوحة الأدمن", callback_data="admin:menu")],
     ])
