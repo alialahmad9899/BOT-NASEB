@@ -16,7 +16,7 @@ services:
       - key: AI_API_KEY
         sync: false
       - key: AI_MODEL
-        value: gemini-2.5-flash-lite
+        value: gemini-3.5-flash-lite
       - key: DATABASE_URL
         sync: false
       - key: WEBHOOK_SECRET
