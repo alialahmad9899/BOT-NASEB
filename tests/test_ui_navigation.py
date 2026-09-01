@@ -16,3 +16,9 @@ def test_client_search_and_results_have_main_menu_navigation():
     assert "⬅️ القائمة الرئيسية" in _labels(client_search_keyboard())
     assert "⬅️ القائمة الرئيسية" in _labels(client_results_keyboard([101]))
     assert "⬅️ القائمة الرئيسية" in _labels(client_profile_keyboard(101))
+
+
+def test_reserved_profile_hides_contact_request():
+    labels = _labels(client_profile_keyboard(101, "reserved"))
+    assert "🔒 العرض محجوز حالياً" in labels
+    assert "📩 طلب تواصل" not in labels
