@@ -54,6 +54,12 @@ def test_basic_profile_fallback_keeps_unknown_fields_null():
     assert parsed.phone is None
 
 
+def test_basic_profile_fallback_uses_damascus_as_city_when_only_damascus_is_given():
+    parsed = basic_profile_extraction("اسمي آية\nعمري 25 من دمشق\nعزباء\nمدرسة\n09xxxxxxxx")
+    assert parsed.province == "دمشق"
+    assert parsed.city == "دمشق"
+
+
 def test_ai_output_is_normalized_before_validation():
     extraction = ProfileExtraction(gender="أنثى", province=" دمشق ", phone="٠٩١١٢٢٣٣٤٤")
     normalized = normalize_profile_extraction(extraction)
