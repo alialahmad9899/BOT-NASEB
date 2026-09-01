@@ -5,13 +5,8 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any
 
-from app.database.repositories import OrderRepository, ProfileRepository, ProfileFilters
-from app.keyboards.client import (
-    client_main_keyboard,
-    client_profile_keyboard,
-    client_results_keyboard,
-    client_search_keyboard,
-)
+from app.database.repositories import OrderRepository, ProfileFilters, ProfileRepository
+from app.keyboards.client import client_main_keyboard, client_profile_keyboard, client_results_keyboard, client_search_keyboard
 from app.services.search import filters_from_ai, merge_filters, parse_search_text
 
 END = -1
@@ -20,7 +15,6 @@ PAYMENT_TX = 31
 
 
 def next_search_state(has_valid_filters: bool) -> int:
-    """Keep the search conversation open for invalid input; finish valid searches."""
     return END if has_valid_filters else SEARCH_TEXT
 
 
@@ -47,13 +41,13 @@ def _search_prompt(target_gender: str | None = None) -> str:
         return (
             "👰 دورولي على عروس مناسبة\n\n"
             "اكتبلي المواصفات بطريقتك، وأنا بفهمها وبحوّلها لفلاتر بحث فعلية.\n"
-            "مثلاً: بدي بنت من دمشق عمرها بين 22 و28، عزباء.\n\n"
+            "مثلاً: بدي بنت من دمشق عمرها بين 22 و28، عزباء وبدون أولاد.\n\n"
             "⬅️ فيك ترجع للقائمة الرئيسية من الزر تحت."
         )
     return (
         "🔎 اكتب مواصفات البحث بطريقتك.\n\n"
-        "فيك تكتبها بالعامية متل ما بتحكي: بدي بنت من دمشق عمرها بين 22 و28، "
-        "أو شاب من حلب حوالي 30 سنة. وأنا بفهم الطلب وبحوّله لفلاتر بحث فعلية.\n\n"
+        "فيك تكتبها بالعامية متل ما بتحكي، وأنا بفهم الطلب وبحوّله لفلاتر بحث فعلية.\n"
+        "مثلاً: بدي بنت من الشام عمرها بين 22 و28، أو شاب من حلب حوالي 30 سنة.\n\n"
         "⬅️ فيك ترجع للقائمة الرئيسية من الزر تحت."
     )
 
@@ -76,10 +70,7 @@ async def client_callback(update: Any, context: Any) -> int:
         context.user_data.clear()
         context.user_data["client_flow"] = "search"
         context.user_data["search_target_gender"] = target_gender
-        await query.edit_message_text(
-            _search_prompt(target_gender),
-            reply_markup=client_search_keyboard(),
-        )
+        await query.edit_message_text(_search_prompt(target_gender), reply_markup=client_search_keyboard())
         return SEARCH_TEXT
 
     if data == "client:list":
@@ -90,8 +81,9 @@ async def client_callback(update: Any, context: Any) -> int:
     if data == "client:about":
         context.user_data.clear()
         await query.edit_message_text(
-            "ℹ️ طريقة العمل\n\nبتقدر تتصفح عروض الزواج وتبحث حسب المحافظة والمدينة والعمر والحالة والمهنة.\n\n"
-            "💡 فيك تكتب طلب البحث بطريقتك وبالعامية، والذكاء الاصطناعي بيفهم الطلب وبيحوّله لفلاتر قاعدة بيانات.\n\n"
+            "ℹ️ طريقة العمل\n\n"
+            "بتقدر تتصفح عروض الزواج وتبحث حسب المحافظة والمدينة والعمر والحالة والمهنة والتعليم وعدد الأولاد.\n\n"
+            "💡 فيك تكتب طلب البحث بطريقتك وبالعامية، والذكاء الاصطناعي بيفهم المقصود وبيحوّله لفلاتر قاعدة بيانات، وبعدها قاعدة البيانات هي اللي بتطلع النتائج.\n\n"
             "🔒 معلومات التواصل الخاصة ما بتظهر للمستخدمين، وبتضل محفوظة لدى الصفحة.",
             reply_markup=client_main_keyboard(),
         )
@@ -115,10 +107,7 @@ async def client_text(update: Any, context: Any) -> int:
         return await _run_search(update, context, text)
     if context.user_data.get("client_flow") == "payment":
         return await _save_transaction(update, context, text)
-    await update.effective_message.reply_text(
-        "🌸 استخدم الأزرار الموجودة بالقائمة.",
-        reply_markup=client_main_keyboard(),
-    )
+    await update.effective_message.reply_text("🌸 استخدم الأزرار الموجودة بالقائمة.", reply_markup=client_main_keyboard())
     return END
 
 
@@ -134,12 +123,16 @@ async def _run_search(update: Any, context: Any, text: str) -> int:
             age_max=base.age_max,
             marital_status=base.marital_status,
             occupation=base.occupation,
+            education=base.education,
+            children_min=base.children_min,
+            children_max=base.children_max,
             limit=base.limit,
         )
 
     has_valid_filters = any((
         base.gender, base.province, base.city, base.age_min, base.age_max,
-        base.marital_status, base.occupation,
+        base.marital_status, base.occupation, base.education,
+        base.children_min is not None, base.children_max is not None,
     ))
     if not has_valid_filters:
         await update.effective_message.reply_text(
@@ -147,7 +140,7 @@ async def _run_search(update: Any, context: Any, text: str) -> int:
             "لسا البحث مفتوح، ابعتلي المحاولة الجاية أو ارجع للقائمة الرئيسية.",
             reply_markup=client_search_keyboard(),
         )
-        return next_search_state(has_valid_filters=False)
+        return next_search_state(False)
 
     filters = base
     ai = context.application.bot_data["ai_service"]
@@ -163,6 +156,9 @@ async def _run_search(update: Any, context: Any, text: str) -> int:
                     age_max=ai_filters.age_max,
                     marital_status=ai_filters.marital_status,
                     occupation=ai_filters.occupation,
+                    education=ai_filters.education,
+                    children_min=ai_filters.children_min,
+                    children_max=ai_filters.children_max,
                     limit=ai_filters.limit,
                 )
             filters = merge_filters(base, ai_filters)
@@ -184,7 +180,7 @@ async def _run_search(update: Any, context: Any, text: str) -> int:
         f"💗 لقينا {len(rows)} عرض مناسب مبدئياً.\n\n"
         + "\n".join(
             f"📌 طلب {row.request_number} — {row.age} سنة — {row.province}"
-            + (f" - {row.city}" if row.city else "")
+            + (f" - {row.city}" if row.city and row.city != row.province else "")
             for row in rows
         ),
         reply_markup=client_results_keyboard([row.request_number for row in rows]),
@@ -196,15 +192,12 @@ async def _show_latest(update: Any, context: Any) -> None:
     with _session(context) as session:
         rows = ProfileRepository(session).latest(10)
     if not rows:
-        await update.callback_query.edit_message_text(
-            "📋 ما في عروض متاحة حالياً.",
-            reply_markup=client_main_keyboard(),
-        )
+        await update.callback_query.edit_message_text("📋 ما في عروض متاحة حالياً.", reply_markup=client_main_keyboard())
         return
     await update.callback_query.edit_message_text(
         "📋 أحدث العروض:\n\n" + "\n".join(
             f"📌 طلب {row.request_number} — {row.age} سنة — {row.province}"
-            + (f" - {row.city}" if row.city else "")
+            + (f" - {row.city}" if row.city and row.city != row.province else "")
             for row in rows
         ),
         reply_markup=client_results_keyboard([row.request_number for row in rows]),
@@ -217,15 +210,9 @@ async def _show_profile(update: Any, context: Any, request_number: int | None) -
     with _session(context) as session:
         public = ProfileRepository(session).get_public(request_number)
         if public is None or public.get("status") != "active":
-            await update.callback_query.edit_message_text(
-                "❌ ما عاد هالعرض متاح.",
-                reply_markup=client_main_keyboard(),
-            )
+            await update.callback_query.edit_message_text("❌ ما عاد هالعرض متاح.", reply_markup=client_main_keyboard())
             return END
-    await update.callback_query.edit_message_text(
-        format_public(public),
-        reply_markup=client_profile_keyboard(request_number),
-    )
+    await update.callback_query.edit_message_text(format_public(public), reply_markup=client_profile_keyboard(request_number))
     return END
 
 
@@ -237,10 +224,7 @@ async def _create_contact_order(update: Any, context: Any, request_number: int |
         repo = OrderRepository(session)
         order = repo.create_contact_request(user.id, request_number, Decimal("5.00"), "شام كاش")
         if order is None:
-            await update.callback_query.edit_message_text(
-                "❌ ما قدرنا ننشئ الطلب، يمكن العرض ما عاد متاح.",
-                reply_markup=client_main_keyboard(),
-            )
+            await update.callback_query.edit_message_text("❌ ما قدرنا ننشئ الطلب، يمكن العرض ما عاد متاح.", reply_markup=client_main_keyboard())
             return END
         session.commit()
         number = order.order_number
@@ -265,19 +249,13 @@ async def _create_contact_order(update: Any, context: Any, request_number: int |
 async def _save_transaction(update: Any, context: Any, text: str) -> int:
     order_number = context.user_data.get("pending_order_number")
     if not order_number:
-        await update.effective_message.reply_text(
-            "❌ ما لقينا طلب الدفع.",
-            reply_markup=client_main_keyboard(),
-        )
+        await update.effective_message.reply_text("❌ ما لقينا طلب الدفع.", reply_markup=client_main_keyboard())
         return END
     with _session(context) as session:
         repo = OrderRepository(session)
         order = repo.get(order_number)
         if order is None or order.user_telegram_id != update.effective_user.id:
-            await update.effective_message.reply_text(
-                "❌ ما لقينا طلب الدفع.",
-                reply_markup=client_main_keyboard(),
-            )
+            await update.effective_message.reply_text("❌ ما لقينا طلب الدفع.", reply_markup=client_main_keyboard())
             return END
         repo.set_transaction_id(order_number, text)
         session.commit()
