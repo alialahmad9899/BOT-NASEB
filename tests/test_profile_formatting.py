@@ -4,8 +4,8 @@ from app.services.profiles import (
     format_draft_preview,
     mask_phone,
     validate_profile_extraction,
+    ProfileDraft,
 )
-from app.services.profiles import ProfileDraft
 
 
 def test_profile_schema_uses_unified_residence_and_requested_fields():
@@ -53,7 +53,7 @@ def test_marriage_profile_format_matches_requested_publishable_shape():
     assert "الصفات: جاد بالزواج، صادق، أمين، وحنون" in text
     assert "09••••••92" in text
     assert "للتواصل: يُرجى المراسلة عبر الرسائل الخاصة لصفحتنا مع ذكر رقم الطلب (139)" in text
-    assert "09xxxxxxxx" not in text
+    assert "0900000092" not in text
 
 
 def test_draft_preview_contains_publishable_copy_and_secret_admin_contact():
@@ -84,8 +84,8 @@ def test_draft_preview_contains_publishable_copy_and_secret_admin_contact():
 
 
 def test_client_phone_is_masked_only():
-    assert mask_phone("0900000092") == "090••••••92"
-    assert mask_phone("0934888392") == "093••••••92"
+    assert mask_phone("0900000092") == "09••••••92"
+    assert mask_phone("0934888392") == "09••••••92"
 
 
 def test_non_single_profile_requires_child_count():
