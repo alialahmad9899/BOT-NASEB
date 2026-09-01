@@ -44,6 +44,11 @@ def _admin_main_keyboard():
     return admin_main_keyboard()
 
 
+def _back_to_admin_keyboard():
+    from app.keyboards.admin import back_to_admin_keyboard
+    return back_to_admin_keyboard()
+
+
 def _add_preview_keyboard(can_save: bool = True):
     from app.keyboards.admin import add_preview_keyboard
     return add_preview_keyboard(can_save)
@@ -97,7 +102,8 @@ async def admin_callback(update: Any, context: Any) -> int:
         context.user_data["admin_flow"] = "add_raw"
         context.user_data.pop("pending_profile", None)
         await query.edit_message_text(
-            "✍️ ابعت نص الإعلان الخام برسالة وحدة.\n\nفيك تلصق النص متل ما وصلك، حتى لو كان عامي أو مو مرتب."
+            "✍️ ابعت نص الإعلان الخام برسالة وحدة.\n\nفيك تلصق النص متل ما وصلك، حتى لو كان عامي أو مو مرتب.",
+            reply_markup=_back_to_admin_keyboard(),
         )
         return ADD_RAW
     if data == "admin:add:save":
@@ -105,7 +111,8 @@ async def admin_callback(update: Any, context: Any) -> int:
     if data == "admin:add:edit":
         context.user_data["admin_flow"] = "add_edit"
         await query.edit_message_text(
-            "✏️ ابعت التعديلات سطر بسطر بالشكل التالي:\nالعمر=25\nالمدينة=جرمانا\nرقم الهاتف=09xxxxxxxx"
+            "✏️ ابعت التعديلات سطر بسطر بالشكل التالي:\nالعمر=25\nالمدينة=جرمانا\nرقم الهاتف=09xxxxxxxx",
+            reply_markup=_back_to_admin_keyboard(),
         )
         return ADD_EDIT
     if data == "admin:add:cancel":
@@ -118,19 +125,21 @@ async def admin_callback(update: Any, context: Any) -> int:
     if data == "admin:search":
         context.user_data["admin_flow"] = "search"
         await query.edit_message_text(
-            "🔎 اكتبلي مواصفات البحث برسالة وحدة.\nمثال: بنت من دمشق بين 22 و28 سنة عزباء"
+            "🔎 اكتبلي مواصفات البحث بطريقتك، وأنا بفهمها وبحوّلها لفلاتر قاعدة بيانات.\n\n"
+            "مثال: بنت دمشق عمرها بين ال20 و39، أو شاب من حلب حوالي 30 سنة.",
+            reply_markup=_back_to_admin_keyboard(),
         )
         return SEARCH_TEXT
     if data == "admin:edit":
         context.user_data["admin_flow"] = "edit_request"
-        await query.edit_message_text("✏️ ابعت رقم الطلب اللي بدك تعدله.")
+        await query.edit_message_text("✏️ ابعت رقم الطلب اللي بدك تعدله.", reply_markup=_back_to_admin_keyboard())
         return EDIT_REQUEST
     if data.startswith("admin:edit:"):
         number = _number_suffix(data)
         return await _begin_direct_edit(update, context, number) if number is not None else END
     if data == "admin:disable":
         context.user_data["admin_flow"] = "disable_request"
-        await query.edit_message_text("🗑️ ابعت رقم الطلب اللي بدك تعطّله.")
+        await query.edit_message_text("🗑️ ابعت رقم الطلب اللي بدك تعطّله.", reply_markup=_back_to_admin_keyboard())
         return DISABLE_REQUEST
     if data.startswith("admin:disable:confirm:"):
         return await _disable_profile(update, context, _number_suffix(data))
@@ -167,6 +176,7 @@ async def admin_callback(update: Any, context: Any) -> int:
     if data.startswith("admin:order:reject:"):
         return await _reject_order(update, context, _number_suffix(data))
     if data == "admin:menu":
+        context.user_data.clear()
         await query.edit_message_text("🔐 لوحة الأدمن", reply_markup=_admin_main_keyboard())
     return END
 
@@ -183,7 +193,7 @@ async def admin_text(update: Any, context: Any) -> int:
     if state == "add_edit":
         draft = context.user_data.get("pending_profile")
         if not draft:
-            await update.effective_message.reply_text("❌ ما عاد في مسودة لإلها تعديلات. بلّش إضافة إعلان من جديد.")
+            await update.effective_message.reply_text("❌ ما عاد في مسودة لإلها تعديلات. بلّش إضافة إعلان من جديد.", reply_markup=_admin_main_keyboard())
             return END
         context.user_data["pending_profile"] = apply_text_edits(draft, text)
         return await _show_pending_preview(update, context)
@@ -193,7 +203,7 @@ async def admin_text(update: Any, context: Any) -> int:
         try:
             number = int(text)
         except ValueError:
-            await update.effective_message.reply_text("❌ رقم الطلب لازم يكون رقماً.")
+            await update.effective_message.reply_text("❌ رقم الطلب لازم يكون رقماً.", reply_markup=_back_to_admin_keyboard())
             return EDIT_REQUEST
         return await _begin_edit_from_message(update, context, number)
     if state == "edit_fields":
@@ -202,7 +212,7 @@ async def admin_text(update: Any, context: Any) -> int:
         try:
             number = int(text)
         except ValueError:
-            await update.effective_message.reply_text("❌ رقم الطلب لازم يكون رقماً.")
+            await update.effective_message.reply_text("❌ رقم الطلب لازم يكون رقماً.", reply_markup=_back_to_admin_keyboard())
             return DISABLE_REQUEST
         await update.effective_message.reply_text(
             f"⚠️ متأكد بدك تعطّل الإعلان رقم {number}؟",
@@ -217,11 +227,11 @@ async def admin_photo(update: Any, context: Any) -> int:
         await update.effective_message.reply_text("❌ ما عندك صلاحية لهالعملية.")
         return END
     if context.user_data.get("admin_flow") != "add_raw":
-        await update.effective_message.reply_text("📷 الصورة بتتنقبل مع نص الإعلان خلال إضافة إعلان جديد.")
+        await update.effective_message.reply_text("📷 الصورة بتتنقبل مع نص الإعلان خلال إضافة إعلان جديد.", reply_markup=_back_to_admin_keyboard())
         return END
     caption = (update.effective_message.caption or "").strip()
     if not caption:
-        await update.effective_message.reply_text("✍️ حط نص الإعلان كـ caption للصورة وأعد الإرسال.")
+        await update.effective_message.reply_text("✍️ حط نص الإعلان كـ caption للصورة وأعد الإرسال.", reply_markup=_back_to_admin_keyboard())
         return ADD_RAW
     return await _parse_and_preview(
         update,
@@ -241,6 +251,7 @@ async def _parse_and_preview(
         await update.effective_message.reply_text(
             "⚠️ Gemini حالياً مو مهيأ. ما رح أعتمد على تخمين محلي لتنظيم الإعلان.\n\n"
             "تأكد من AI_API_KEY على Render وبعدين أعد إرسال الإعلان.",
+            reply_markup=_back_to_admin_keyboard(),
         )
         return ADD_RAW
 
@@ -250,6 +261,7 @@ async def _parse_and_preview(
         await update.effective_message.reply_text(
             "⚠️ ما قدرت أوصل لـGemini لتنظيم الإعلان.\n\n"
             "ما تم حفظ أي بيانات. تأكد من مفتاح Gemini وإعداداته على Render، وبعدها أعد إرسال الإعلان.",
+            reply_markup=_back_to_admin_keyboard(),
         )
         return ADD_RAW
 
@@ -359,9 +371,9 @@ async def _run_search(update: Any, context: Any, text: str, admin: bool) -> int:
     )):
         message = "⚠️ ما قدرت أفهم فلاتر البحث. اكتب مثلاً: بنت من دمشق بين 22 و28 سنة عزباء"
         if update.callback_query:
-            await update.callback_query.edit_message_text(message)
+            await update.callback_query.edit_message_text(message, reply_markup=_back_to_admin_keyboard())
         else:
-            await update.effective_message.reply_text(message)
+            await update.effective_message.reply_text(message, reply_markup=_back_to_admin_keyboard())
         return END
 
     filters = base
@@ -415,13 +427,14 @@ async def _begin_edit_from_message(update: Any, context: Any, request_number: in
     with _session(context) as session:
         profile = ProfileRepository(session).get_with_contact(request_number)
     if profile is None:
-        await update.effective_message.reply_text("❌ ما لقينا هالإعلان.")
+        await update.effective_message.reply_text("❌ ما لقينا هالإعلان.", reply_markup=_back_to_admin_keyboard())
         return EDIT_REQUEST
     context.user_data["edit_request_number"] = request_number
     context.user_data["admin_flow"] = "edit_fields"
     await update.effective_message.reply_text(
         format_admin_profile(profile)
-        + "\n\n✏️ ابعت التعديلات سطر بسطر، مثلاً:\nالعمر=25\nالمحافظة=دمشق\nرقم الهاتف=09xxxxxxxx"
+        + "\n\n✏️ ابعت التعديلات سطر بسطر، مثلاً:\nالعمر=25\nالمحافظة=دمشق\nرقم الهاتف=09xxxxxxxx",
+        reply_markup=_back_to_admin_keyboard(),
     )
     return EDIT_FIELDS
 
@@ -436,7 +449,8 @@ async def _begin_direct_edit(update: Any, context: Any, request_number: int) -> 
     context.user_data["admin_flow"] = "edit_fields"
     await update.callback_query.edit_message_text(
         format_admin_profile(profile)
-        + "\n\n✏️ ابعت التعديلات سطر بسطر، مثلاً:\nالعمر=25\nالمدينة=جرمانا\nرقم الهاتف=09xxxxxxxx"
+        + "\n\n✏️ ابعت التعديلات سطر بسطر، مثلاً:\nالعمر=25\nالمدينة=جرمانا\nرقم الهاتف=09xxxxxxxx",
+        reply_markup=_back_to_admin_keyboard(),
     )
     return EDIT_FIELDS
 
@@ -449,14 +463,17 @@ async def _apply_direct_edit(update: Any, context: Any, text: str) -> int:
         repo = ProfileRepository(session)
         current = repo.get_with_contact(request_number)
         if current is None:
-            await update.effective_message.reply_text("❌ ما لقينا هالإعلان.")
+            await update.effective_message.reply_text("❌ ما لقينا هالإعلان.", reply_markup=_admin_main_keyboard())
             return END
         draft = extraction_to_draft(ProfileExtraction.model_validate(current))
         updated = apply_text_edits(draft, text)
         merged = ProfileExtraction.model_validate({**updated.public_data, **updated.private_contact_data})
         validation = validate_profile_extraction(merged, updated.private_contact_data)
         if not validation.ok:
-            await update.effective_message.reply_text("⚠️ ما بقدر أحفظ التعديل قبل اكتمال البيانات الأساسية.")
+            await update.effective_message.reply_text(
+                "⚠️ ما بقدر أحفظ التعديل قبل اكتمال البيانات الأساسية.",
+                reply_markup=_back_to_admin_keyboard(),
+            )
             return EDIT_FIELDS
         repo.update(request_number, {**updated.public_data, **updated.private_contact_data})
         session.commit()
