@@ -7,7 +7,6 @@ from typing import Any
 
 from app.database.repositories import OrderRepository, ProfileFilters, ProfileRepository, export_all_data, profile_to_dict
 from app.services.ai import AIExtractionError, AIService, ProfileExtraction, basic_profile_extraction
-from app.services.isolation import normalize_profile_extraction
 from app.services.permissions import is_admin
 from app.services.profiles import apply_text_edits, extraction_to_draft, format_admin_profile, format_draft_preview, validate_profile_extraction
 from app.services.search import filters_from_ai, merge_filters, parse_search_text
@@ -317,8 +316,7 @@ async def _run_search(update: Any, context: Any, text: str, admin: bool) -> int:
         base.marital_status, base.occupation, base.education,
         base.children_min is not None, base.children_max is not None,
     )):
-        message = "⚠️ ما قدرت أفهم فلاتر البحث. اكتب مثلاً: بنت من دمشق بين 22 و28 سنة عزباء"
-        await update.effective_message.reply_text(message, reply_markup=_back_to_admin_keyboard())
+        await update.effective_message.reply_text("⚠️ ما قدرت أفهم فلاتر البحث. اكتب مثلاً: بنت من دمشق بين 22 و28 سنة عزباء", reply_markup=_back_to_admin_keyboard())
         return END
 
     filters = base
@@ -367,7 +365,7 @@ async def _begin_edit_from_message(update: Any, context: Any, request_number: in
     context.user_data["edit_request_number"] = request_number
     context.user_data["admin_flow"] = "edit_fields"
     await update.effective_message.reply_text(
-        format_admin_profile(profile) + "\n\n✏️ ابعت التعديلات سطر بسطر، مثلاً:\nالعمر=25\nالمدينة=جرمانا\nعدد الأولاد=0\nرقم الهاتف=09xxxxxxxx",
+        format_admin_profile(profile) + "\n\n✏️ ابعت التعديلات سطر بسطر، مثلاً:\nالعمر=25\nالمحافظة=دمشق\nعدد الأولاد=0\nرقم الهاتف=09xxxxxxxx",
         reply_markup=_back_to_admin_keyboard(),
     )
     return EDIT_FIELDS
