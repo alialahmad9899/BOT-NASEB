@@ -42,6 +42,10 @@ def _canonical_marital(value: str | None) -> str | None:
     return MARITAL_ALIASES.get(normalize_digits(value).strip().lower(), value.strip())
 
 
+def _marital_mentioned(text: str, canonical: str) -> bool:
+    return any(alias in text for alias, normalized in MARITAL_ALIASES.items() if normalized == canonical)
+
+
 def _province_mentioned(text: str, province: str) -> bool:
     return any(alias in text for alias, canonical in PROVINCE_ALIASES.items() if canonical == province)
 
@@ -88,11 +92,9 @@ def _extract_children_filter(text: str) -> tuple[int | None, int | None]:
     normalized = text.lower()
     if re.search(r"(?:بدون|ما عندها|ماعندها|ما عنده|ماعنده|ما فيها|مابيها)\s+(?:ولاد|اولاد|أولاد|أطفال|اطفال)", normalized):
         return 0, 0
-    match = re.search(r"(?:ولد واحد|طفل واحد)", normalized)
-    if match:
+    if re.search(r"(?:ولد واحد|طفل واحد)", normalized):
         return 1, 1
-    match = re.search(r"(?:ولدين|طفلين)", normalized)
-    if match:
+    if re.search(r"(?:ولدين|طفلين)", normalized):
         return 2, 2
     match = re.search(r"(?:عندها|عنده|عندو|عندي|لديها|لديه)\s*(\d{1,2})\s*(?:ولاد|اولاد|أولاد|أطفال|اطفال)", normalized)
     if match:
@@ -111,7 +113,7 @@ def _extract_education(text: str) -> str | None:
 def parse_search_text(text: str) -> ProfileFilters:
     normalized = normalize_digits(text).strip().lower()
     gender = None
-    if re.search(r"(?:بنت|صبية|عروس|انثى|أنثى|فتاة)", normalized):
+    if re.search(r"(?:بنت|صبية|عروس|حروس|انثى|أنثى|فتاة)", normalized):
         gender = "female"
     elif re.search(r"(?:شاب|شب|عريس|ذكر|رجل)", normalized):
         gender = "male"
@@ -148,7 +150,6 @@ def parse_search_text(text: str) -> ProfileFilters:
     city_match = re.search(r"(?:مدينة|ساكن(?:ة)?|سكن(?:ي)?)\s+([\u0600-\u06ff]{3,30})", normalized)
     if city_match:
         city = city_match.group(1).strip(" ،,")
-
     if city and province and city == province and not _explicit_city_reference(normalized):
         city = None
 
@@ -191,7 +192,7 @@ def filters_from_ai(extraction: SearchFilterExtraction, raw_text: str | None = N
     source = normalize_digits(raw_text or "").lower()
 
     gender = extraction.gender if extraction.gender in {"male", "female"} else None
-    if source and gender == "female" and not re.search(r"بنت|صبية|عروس|انثى|أنثى|فتاة", source):
+    if source and gender == "female" and not re.search(r"بنت|صبية|عروس|حروس|انثى|أنثى|فتاة", source):
         gender = None
     if source and gender == "male" and not re.search(r"شاب|شب|عريس|ذكر|رجل", source):
         gender = None
@@ -216,7 +217,7 @@ def filters_from_ai(extraction: SearchFilterExtraction, raw_text: str | None = N
         age_min, age_max = sorted((age_min, age_max))
 
     marital = _canonical_marital(extraction.marital_status)
-    if source and marital and marital.lower() not in source:
+    if source and marital and not _marital_mentioned(source, marital):
         marital = None
 
     occupation = extraction.occupation.strip() if extraction.occupation else None
@@ -224,17 +225,13 @@ def filters_from_ai(extraction: SearchFilterExtraction, raw_text: str | None = N
         occupation = None
 
     education = extraction.education.strip() if extraction.education else None
-    if source and education and education.lower() not in source:
+    if source and education and not any(token in source for token in education.lower().split() if len(token) >= 3):
         education = None
 
     children_min = extraction.children_min if extraction.children_min is not None and 0 <= extraction.children_min <= 50 else None
     children_max = extraction.children_max if extraction.children_max is not None and 0 <= extraction.children_max <= 50 else None
     if source:
         local_min, local_max = _extract_children_filter(source)
-        if children_min is not None and local_min is None:
-            children_min = None
-        if children_max is not None and local_max is None:
-            children_max = None
         if local_min is not None:
             children_min = local_min if children_min is None else max(children_min, local_min)
         if local_max is not None:
