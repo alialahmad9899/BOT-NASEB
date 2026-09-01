@@ -14,12 +14,16 @@ class SettingsError(ValueError):
     """Raised when required environment configuration is missing or invalid."""
 
 
+DEFAULT_AI_MODEL = "gemini-3.5-flash-lite"
+LEGACY_AI_MODELS = {"gemini-2.5-flash-lite"}
+
+
 @dataclass(frozen=True)
 class Settings:
     telegram_bot_token: str
     admin_user_ids: frozenset[int]
     ai_api_key: str | None = None
-    ai_model: str = "gemini-3.5-flash-lite"
+    ai_model: str = DEFAULT_AI_MODEL
     database_url: str | None = None
     public_base_url: str | None = None
     webhook_secret: str | None = None
@@ -47,11 +51,15 @@ class Settings:
         if not webhook_path.startswith("/"):
             webhook_path = "/" + webhook_path
 
+        ai_model = os.getenv("AI_MODEL", DEFAULT_AI_MODEL).strip() or DEFAULT_AI_MODEL
+        if ai_model in LEGACY_AI_MODELS:
+            ai_model = DEFAULT_AI_MODEL
+
         return cls(
             telegram_bot_token=token,
             admin_user_ids=frozenset(admin_user_ids),
             ai_api_key=os.getenv("AI_API_KEY") or None,
-            ai_model=os.getenv("AI_MODEL", "gemini-3.5-flash-lite").strip() or "gemini-3.5-flash-lite",
+            ai_model=ai_model,
             database_url=os.getenv("DATABASE_URL") or None,
             public_base_url=(os.getenv("PUBLIC_BASE_URL") or os.getenv("RENDER_EXTERNAL_URL") or None),
             webhook_secret=os.getenv("WEBHOOK_SECRET") or None,
