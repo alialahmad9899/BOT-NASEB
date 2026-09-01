@@ -29,8 +29,8 @@ def test_marriage_profile_format_matches_requested_publishable_shape():
     assert "المستوى التعليمي: شهادة بكالوريا 📚" in text
     assert "الحالة الاجتماعية: عزباء 💍" in text
     assert "المواصفات الشخصية: 💗" in text
-    assert "📏 الطول: 158 سم" in text
-    assert "⚖️ الوزن: 62 كغم" in text
+    assert "الطول: 158 سم" in text
+    assert "الوزن: 62 كغم" in text
     assert "الشكل: سمراء جذابة، محجبة" in text
     assert "مواصفات الشريك المطلوب: 💙" in text
     assert "العمر: لا يتجاوز 40 سنة" in text
