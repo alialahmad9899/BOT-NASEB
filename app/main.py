@@ -21,6 +21,7 @@ from app.database.models import Base
 from app.handlers.admin import (
     ADD_EDIT,
     ADD_RAW,
+    DELETE_REQUEST,
     DISABLE_REQUEST,
     EDIT_FIELDS,
     EDIT_REQUEST,
@@ -54,49 +55,27 @@ def build_application(settings: Settings) -> Application:
     admin_conversation = ConversationHandler(
         entry_points=[CallbackQueryHandler(admin_callback, pattern=r"^admin:")],
         states={
-            ADD_RAW: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text),
-                MessageHandler(filters.PHOTO, admin_photo),
-                CallbackQueryHandler(admin_callback, pattern=r"^admin:"),
-            ],
-            ADD_EDIT: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text),
-                CallbackQueryHandler(admin_callback, pattern=r"^admin:"),
-            ],
-            SEARCH_TEXT: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text),
-                CallbackQueryHandler(admin_callback, pattern=r"^admin:"),
-            ],
-            EDIT_REQUEST: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text),
-                CallbackQueryHandler(admin_callback, pattern=r"^admin:"),
-            ],
-            EDIT_FIELDS: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text),
-                CallbackQueryHandler(admin_callback, pattern=r"^admin:"),
-            ],
-            DISABLE_REQUEST: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text),
-                CallbackQueryHandler(admin_callback, pattern=r"^admin:"),
-            ],
+            ADD_RAW: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text), MessageHandler(filters.PHOTO, admin_photo), CallbackQueryHandler(admin_callback, pattern=r"^admin:")],
+            ADD_EDIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text), CallbackQueryHandler(admin_callback, pattern=r"^admin:")],
+            SEARCH_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text), CallbackQueryHandler(admin_callback, pattern=r"^admin:")],
+            EDIT_REQUEST: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text), CallbackQueryHandler(admin_callback, pattern=r"^admin:")],
+            EDIT_FIELDS: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text), CallbackQueryHandler(admin_callback, pattern=r"^admin:")],
+            DISABLE_REQUEST: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text), CallbackQueryHandler(admin_callback, pattern=r"^admin:")],
+            DELETE_REQUEST: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text), CallbackQueryHandler(admin_callback, pattern=r"^admin:")],
         },
         fallbacks=[CommandHandler("cancel", cancel_command)],
         allow_reentry=True,
+        per_message=False,
     )
     client_conversation = ConversationHandler(
         entry_points=[CallbackQueryHandler(client_callback, pattern=r"^client:")],
         states={
-            CLIENT_SEARCH_TEXT: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, client_text),
-                CallbackQueryHandler(client_callback, pattern=r"^client:"),
-            ],
-            PAYMENT_TX: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, client_text),
-                CallbackQueryHandler(client_callback, pattern=r"^client:"),
-            ],
+            CLIENT_SEARCH_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, client_text), CallbackQueryHandler(client_callback, pattern=r"^client:")],
+            PAYMENT_TX: [MessageHandler(filters.TEXT & ~filters.COMMAND, client_text), CallbackQueryHandler(client_callback, pattern=r"^client:")],
         },
         fallbacks=[CommandHandler("cancel", cancel_command)],
         allow_reentry=True,
+        per_message=False,
     )
 
     application.add_handler(CommandHandler("start", start_command))
@@ -116,11 +95,9 @@ async def application_error(update: object, context: Any) -> None:
     error = context.error
     error_type = type(error).__name__ if error else "UnknownError"
     logger.error("Unhandled application error: %s", error_type)
-
     message = getattr(update, "effective_message", None)
     if message is None:
         return
-
     try:
         await message.reply_text(user_message_for_error(error))
     except Exception:
@@ -145,12 +122,7 @@ def create_web_app(application: Application, settings: Settings) -> Starlette:
             return JSONResponse({"ok": False}, status_code=400)
         return JSONResponse({"ok": True})
 
-    return Starlette(
-        routes=[
-            Route("/health", _health, methods=["GET"]),
-            Route(settings.webhook_path, telegram_webhook, methods=["POST"]),
-        ]
-    )
+    return Starlette(routes=[Route("/health", _health, methods=["GET"]), Route(settings.webhook_path, telegram_webhook, methods=["POST"])])
 
 
 async def _run_webhook(application: Application, settings: Settings) -> None:
@@ -162,11 +134,7 @@ async def _run_webhook(application: Application, settings: Settings) -> None:
     server = uvicorn.Server(uvicorn.Config(web_app, host="0.0.0.0", port=settings.port, log_level="info"))
     async with application:
         await application.start()
-        await application.bot.set_webhook(
-            url=webhook_url,
-            allowed_updates=Update.ALL_TYPES,
-            secret_token=settings.webhook_secret,
-        )
+        await application.bot.set_webhook(url=webhook_url, allowed_updates=Update.ALL_TYPES, secret_token=settings.webhook_secret)
         try:
             await server.serve()
         finally:
