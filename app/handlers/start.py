@@ -40,6 +40,11 @@ CLIENT_START_TEXT = """🌸 أهلاً وسهلاً في لقاء ونصيب
 """
 
 
+def reset_session_for_start(context: Any) -> None:
+    """Clear any in-progress flow so `/start` is always a clean restart."""
+    context.user_data.clear()
+
+
 def start_content_for_user(user_id: int, admin_user_ids: set[int] | frozenset[int]) -> StartContent:
     if is_admin(user_id, admin_user_ids):
         return StartContent(role="admin", text=ADMIN_START_TEXT)
@@ -47,8 +52,7 @@ def start_content_for_user(user_id: int, admin_user_ids: set[int] | frozenset[in
 
 
 async def start_command(update: Any, context: Any) -> None:
-    # `/start` always acts as a clean restart, even when the user is inside a conversation.
-    context.user_data.clear()
+    reset_session_for_start(context)
     user = update.effective_user
     message = update.effective_message
     settings = context.application.bot_data["settings"]
