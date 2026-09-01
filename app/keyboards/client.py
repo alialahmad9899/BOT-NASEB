@@ -16,7 +16,7 @@ def client_main_keyboard() -> InlineKeyboardMarkup:
 
 def client_search_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🏠 الرئيسية", callback_data="client:menu")],
+        [InlineKeyboardButton("⬅️ القائمة الرئيسية", callback_data="client:menu")],
     ])
 
 
