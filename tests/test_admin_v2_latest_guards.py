@@ -9,20 +9,18 @@ def _callbacks(markup):
     return [button.callback_data for row in markup.inline_keyboard for button in row]
 
 
-def test_admin_dashboard_exposes_core_v2_sections():
+def test_admin_dashboard_exposes_grouped_v2_sections():
     labels = _labels(admin_main_keyboard())
-    assert "➕ إضافة إعلان" in labels
-    assert "🔎 البحث الذكي" in labels
-    assert "📋 إدارة الإعلانات" in labels
-    assert "💳 طلبات التواصل" in labels
-    assert "🔒 الحجوزات" in labels
-    assert "🗃️ الأرشيف" in labels
-    assert "⚠️ بحاجة لاستكمال" in labels
-    assert "📊 التقارير" in labels
-    assert "🧾 سجل العمليات" in labels
-    assert "💾 النسخ الاحتياطية" in labels
-    assert "⚙️ الإعدادات" in labels
-    assert "🛑 منطقة الخطر" in labels
+    assert labels == [
+        "🔎 الإعلانات والبحث",
+        "➕ إضافة إعلان",
+        "💳 الطلبات والتواصل",
+        "🔒 الحجوزات",
+        "📣 النشر والمحتوى",
+        "📊 التقارير والمتابعة",
+        "🛡️ الأمان والنسخ",
+        "⚙️ الإعدادات",
+    ]
 
 
 def test_legacy_order_callbacks_remain_clickable_for_old_messages():
