@@ -1,7 +1,7 @@
 """Top-level Admin V2 callback/text guard.
 
-This small adapter protects read-only roles and fixes routing edge cases before
-delegating the full feature set to `admin_router`.
+This adapter protects read-only roles, keeps legacy callbacks alive, and routes
+all destructive operations through the Admin V2 safety rules.
 """
 
 from __future__ import annotations
@@ -15,10 +15,10 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ConversationHandler
 
 from app.database.admin_models import AdminBackup, ProfileAdminMeta
-from app.database.models import Profile
+from app.database.models import Order
 from app.database.repositories import OrderRepository, ProfileRepository
 from app.handlers import admin_router
-from app.services.admin_meta import get_order_meta, get_profile_meta, list_audit_logs, metrics, payment_method, service_price
+from app.services.admin_meta import create_backup, get_order_meta, get_profile_meta, list_audit_logs, log_admin_action, metrics, payment_method, service_price
 
 ADMIN_V2_INPUT = admin_router.ADMIN_V2_INPUT
 END = ConversationHandler.END
@@ -54,6 +54,7 @@ def _viewer_blocked(data: str) -> bool:
         "admin:v2:unpublish", "admin:v2:order:confirm", "admin:v2:order:reject", "admin:v2:order:contacted",
         "admin:v2:order:opened", "admin:v2:order:complete", "admin:v2:order:delete", "admin:v2:backup:create",
         "admin:v2:backup:restore", "admin:v2:settings:price", "admin:v2:settings:method", "admin:v2:danger",
+        "admin:orders:delete:pending",
     )
     return any(data.startswith(prefix) for prefix in write_prefixes)
 
@@ -118,8 +119,46 @@ async def _extend_reservation(update: Any, context: Any, number: int, days: int)
         else:
             base = meta.reservation_expires_at if meta.reservation_expires_at and meta.reservation_expires_at > now else now
             meta.reservation_expires_at = base + timedelta(days=days)
+        log_admin_action(session, int(update.effective_user.id), "reservation_extend", "profile", number, {"days": days})
         session.commit()
     await update.callback_query.edit_message_text(f"✅ تم تعديل مدة حجز الإعلان {number}.", reply_markup=admin_router.admin_v2._dashboard_keyboard())
+    return END
+
+
+async def _bulk_delete_pending_orders_confirm(update: Any, context: Any) -> int:
+    if not _manager(update, context):
+        await update.callback_query.answer("❌ هالعملية للمديرين فقط.", show_alert=True)
+        return END
+    with _session(context) as session:
+        pending = len(OrderRepository(session).list_pending(limit=50))
+    if pending == 0:
+        await update.callback_query.edit_message_text("💳 ما في طلبات معلّقة.", reply_markup=admin_router.admin_v2._dashboard_keyboard())
+        return END
+    context.user_data["v2_flow"] = "danger_pending_orders"
+    await update.callback_query.edit_message_text(
+        f"⚠️ رح ينحذف {pending} طلب تواصل معلّق نهائياً.\n\n"
+        "رح نعمل نسخة احتياطية تلقائياً قبل الحذف.\n\n"
+        "اكتب **حذف كل الطلبات المعلّقة** للتأكيد.",
+        parse_mode="Markdown",
+        reply_markup=admin_router.admin_v2._back_keyboard(),
+    )
+    return ADMIN_V2_INPUT
+
+
+async def _bulk_delete_pending_orders(update: Any, context: Any) -> int:
+    if update.effective_message.text.strip() != "حذف كل الطلبات المعلّقة":
+        await update.effective_message.reply_text("❌ لم يتم الحذف.", reply_markup=admin_router.admin_v2._back_keyboard())
+        return ADMIN_V2_INPUT
+    if not _manager(update, context):
+        await update.effective_message.reply_text("❌ للمديرين فقط.")
+        return END
+    with _session(context) as session:
+        create_backup(session, int(update.effective_user.id), "قبل حذف كل طلبات التواصل المعلّقة")
+        count = OrderRepository(session).delete_pending()
+        log_admin_action(session, int(update.effective_user.id), "bulk_pending_order_delete", "order", None, {"count": count})
+        session.commit()
+    context.user_data.clear()
+    await update.effective_message.reply_text(f"✅ تم حذف {count} طلبات معلّقة بعد إنشاء نسخة احتياطية.", reply_markup=admin_router.admin_v2._dashboard_keyboard())
     return END
 
 
@@ -143,7 +182,10 @@ async def admin_callback(update: Any, context: Any) -> int:
     match = re.fullmatch(r"admin:v2:reservation:extend:(\d+):(\d+)", data)
     if match:
         return await _extend_reservation(update, context, int(match.group(1)), int(match.group(2)))
-    # Delegation preserves all existing callbacks and the legacy aliases.
+    if data == "admin:orders:delete:pending":
+        return await _bulk_delete_pending_orders_confirm(update, context)
+    if data.startswith("admin:orders:delete:pending:confirm"):
+        return await _bulk_delete_pending_orders_confirm(update, context)
     return await admin_router.admin_callback(update, context)
 
 
@@ -152,13 +194,16 @@ async def admin_text(update: Any, context: Any) -> int:
     if user is None or _role(context, int(user.id)) is None:
         await update.effective_message.reply_text("❌ ما عندك صلاحية لهالعملية.")
         return END
-    if _role(context, int(user.id)) == "viewer" and context.user_data.get("v2_flow") in {
+    flow = context.user_data.get("v2_flow")
+    if _role(context, int(user.id)) == "viewer" and flow in {
         "add_raw", "add_edit", "edit_field", "reserve_reason", "delete_profile_confirm", "delete_order_confirm",
         "danger_selected", "danger_selected_confirm", "danger_all", "restore_confirm", "settings_price", "settings_method",
-        "archive_custom_reason",
+        "archive_custom_reason", "danger_pending_orders",
     }:
         await update.effective_message.reply_text("👀 حساب المشاهدة للعرض فقط.", reply_markup=admin_router.admin_v2._dashboard_keyboard())
         return END
+    if flow == "danger_pending_orders":
+        return await _bulk_delete_pending_orders(update, context)
     return await admin_router.admin_text(update, context)
 
 
