@@ -32,8 +32,11 @@ from app.handlers.admin import (
 )
 from app.handlers.client import SEARCH_CONFIRM, SEARCH_TEXT as CLIENT_SEARCH_TEXT, client_callback, client_text
 from app.handlers.payment import (
+    WHATSAPP_CONFIRM,
     WHATSAPP_INPUT,
     payment_whatsapp_cancel,
+    payment_whatsapp_confirm,
+    payment_whatsapp_edit,
     payment_whatsapp_text,
     request_contact_callback,
     stale_payment_callback,
@@ -73,18 +76,25 @@ def build_application(settings: Settings) -> Application:
         allow_reentry=True,
         per_message=False,
     )
+
     payment_conversation = ConversationHandler(
         entry_points=[CallbackQueryHandler(request_contact_callback, pattern=r"^client:request:")],
         states={
             WHATSAPP_INPUT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, payment_whatsapp_text),
-                CallbackQueryHandler(payment_whatsapp_cancel, pattern=r"^client:payment:whatsapp:cancel$"),
+                CallbackQueryHandler(payment_whatsapp_cancel, pattern=r"^client:(?:whatsapp:cancel|menu)$"),
+            ],
+            WHATSAPP_CONFIRM: [
+                CallbackQueryHandler(payment_whatsapp_confirm, pattern=r"^client:whatsapp:confirm$"),
+                CallbackQueryHandler(payment_whatsapp_edit, pattern=r"^client:whatsapp:edit$"),
+                CallbackQueryHandler(payment_whatsapp_cancel, pattern=r"^client:(?:whatsapp:cancel|menu)$"),
             ],
         },
         fallbacks=[CommandHandler("cancel", cancel_command)],
         allow_reentry=True,
         per_message=False,
     )
+
     client_conversation = ConversationHandler(
         entry_points=[CallbackQueryHandler(client_callback, pattern=r"^client:")],
         states={

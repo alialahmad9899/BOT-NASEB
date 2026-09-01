@@ -14,7 +14,12 @@ def test_start_returns_client_menu_for_regular_user():
 
     assert result.role == "client"
     assert "لقاء ونصيب" in result.text
-    assert "📋 تصفح العروض" in result.text
+    assert "💗 بدي عروس" in result.text
+    assert "🤵 بدي عريس" in result.text
+    assert "🔎 بدي أبحث بنفسي" in result.text
+    assert "📋 شوف العروض" in result.text
+    assert "💳 طلباتي" in result.text
+    assert "ℹ️ كيف بتشتغل الصفحة؟" in result.text
     assert "لوحة الأدمن" not in result.text
 
 

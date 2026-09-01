@@ -7,18 +7,21 @@ def _labels(markup):
 
 def test_client_main_offers_gender_specific_match_actions():
     labels = _labels(client_main_keyboard())
-    assert "🤵 دورولي على عريس مناسب" in labels
-    assert "👰 دورولي على عروس مناسبة" in labels
+    assert "🤵 بدي عريس" in labels
+    assert "💗 بدي عروس" in labels
+    assert "🤵 دورولي على عريس مناسب" not in labels
+    assert "👰 دورولي على عروس مناسبة" not in labels
     assert "💗 دورولي على شريك مناسب" not in labels
 
 
 def test_client_search_and_results_have_main_menu_navigation():
     assert "⬅️ القائمة الرئيسية" in _labels(client_search_keyboard())
-    assert "⬅️ القائمة الرئيسية" in _labels(client_results_keyboard([101]))
-    assert "⬅️ القائمة الرئيسية" in _labels(client_profile_keyboard(101))
+    assert "🏠 الرئيسية" not in _labels(client_search_keyboard())
+    assert "🏠 الرئيسية" in _labels(client_results_keyboard([101]))
+    assert "🏠 الرئيسية" in _labels(client_profile_keyboard(101))
 
 
 def test_reserved_profile_hides_contact_request():
     labels = _labels(client_profile_keyboard(101, "reserved"))
     assert "🔒 العرض محجوز حالياً" in labels
-    assert "📩 طلب تواصل" not in labels
+    assert "📩 أطلب التواصل" not in labels

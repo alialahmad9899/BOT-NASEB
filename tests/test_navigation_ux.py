@@ -17,8 +17,10 @@ def _callbacks(markup):
 def test_client_main_exposes_simple_actions():
     texts = _texts(client_main_keyboard())
     assert "💳 طلباتي" in texts
-    assert "🤵 دورولي على عريس مناسب" in texts
-    assert "👰 دورولي على عروس مناسبة" in texts
+    assert "🤵 بدي عريس" in texts
+    assert "💗 بدي عروس" in texts
+    assert "🤵 دورولي على عريس مناسب" not in texts
+    assert "👰 دورولي على عروس مناسبة" not in texts
 
 
 def test_client_results_offer_new_search_and_home():
