@@ -95,15 +95,16 @@ def confirm_delete_pending_orders_keyboard() -> InlineKeyboardMarkup:
 
 def admin_delete_menu_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📦 الأرشيف هو الحذف العادي", callback_data="admin:v2:profiles:0:archived")],
-        [InlineKeyboardButton("⚠️ الحذف النهائي", callback_data="admin:v2:profiles:0:all")],
-        [InlineKeyboardButton("❌ إلغاء", callback_data="admin:menu")],
+        [InlineKeyboardButton("📦 الأرشيف هو الحذف العادي", callback_data="admin:delete:selected")],
+        [InlineKeyboardButton("⚠️ حذف نهائي", callback_data="admin:delete:all")],
+        [InlineKeyboardButton("❌ إلغاء", callback_data="admin:delete:cancel")],
+        [InlineKeyboardButton("⬅️ لوحة الأدمن", callback_data="admin:menu")],
     ])
 
 
 def confirm_delete_all_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("⚠️ الرجوع للإعلانات", callback_data="admin:v2:profiles:0:all")],
+        [InlineKeyboardButton("⚠️ لا تستخدم الحذف المباشر", callback_data="admin:v2:profiles:0:all")],
         [InlineKeyboardButton("❌ إلغاء", callback_data="admin:menu")],
     ])
 
