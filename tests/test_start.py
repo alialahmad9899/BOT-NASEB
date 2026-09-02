@@ -6,7 +6,7 @@ def test_start_returns_admin_menu_for_admin_user():
 
     assert result.role == "admin"
     assert "لوحة الأدمن" in result.text
-    assert "➕ إضافة إعلان" in result.text
+    assert "اختار القسم اللي بدك تديره" in result.text
 
 
 def test_start_returns_client_menu_for_regular_user():
