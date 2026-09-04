@@ -1,0 +1,1 @@
+Incomplete-profile saving is hardened with a dedicated runtime handler, database-derived request numbering, atomic persistence, and isolated Telegram response handling.
