@@ -183,9 +183,11 @@ def apply_text_edits(draft: ProfileDraft, text: str) -> ProfileDraft:
 class ProfileValidation:
     missing_fields: tuple[str, ...]
     errors: tuple[str, ...]
+
     @property
     def ok(self) -> bool:
-        return not self.missing_fields and not self.errors
+        # Missing values are warnings only. Invalid values remain blocking errors.
+        return not self.errors
 
 
 def validate_profile_extraction(extraction: Any, private_contact_data: dict) -> ProfileValidation:
