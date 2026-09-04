@@ -13,6 +13,13 @@ def test_arabic_gender_from_extraction_is_normalized_before_persistence():
     assert draft.public_data["gender"] == "female"
 
 
+def test_arabic_gender_is_valid_during_validation():
+    result = validate_profile_extraction(ProfileExtraction(gender="أنثى"), {})
+    assert result.ok is True
+    assert "gender" not in result.missing_fields
+    assert result.errors == ()
+
+
 def test_invalid_gender_is_a_blocking_validation_error_but_missing_gender_is_not():
     missing = validate_profile_extraction(ProfileExtraction(), {})
     invalid = validate_profile_extraction(ProfileExtraction(gender="unknown"), {})
