@@ -177,6 +177,8 @@ async def _settings_subsection(update: Any, context: Any, name: str) -> int:
 
 async def admin_callback(update: Any, context: Any) -> int:
     data = update.callback_query.data or ""
+    if data == "admin:v2:add:save":
+        return await admin_v2._save_add(update, context)
     if data.startswith("admin:v2:section:"):
         parts = data.split(":")
         if len(parts) == 4 and parts[3] in {"ads", "orders", "reservations", "publishing", "reports", "security", "settings"}:
