@@ -195,9 +195,11 @@ class ProfileValidation:
 def validate_profile_extraction(extraction: Any, private_contact_data: dict) -> ProfileValidation:
     missing = []
     gender = extraction.gender.strip().lower() if isinstance(extraction.gender, str) else extraction.gender
-    if not gender: missing.append("gender")
-    elif gender not in {"male", "female"}: errors_gender = "نوع الإعلان يجب أن يكون عريساً أو عروساً (male/female)."
-    else: errors_gender = None
+    errors_gender = None
+    if not gender:
+        missing.append("gender")
+    elif gender not in {"male", "female"}:
+        errors_gender = "نوع الإعلان يجب أن يكون عريساً أو عروساً (male/female)."
     if extraction.age is None: missing.append("age")
     if not extraction.residence: missing.append("residence")
     if not (private_contact_data.get("phone") or private_contact_data.get("telegram_username") or private_contact_data.get("whatsapp")): missing.append("contact")
