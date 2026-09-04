@@ -125,7 +125,7 @@ class ProfileDraft:
 
 def extraction_to_draft(extraction: Any) -> ProfileDraft:
     public = {
-        "gender": extraction.gender,
+        "gender": normalize_gender(extraction.gender) if extraction.gender else None,
         "name": extraction.name,
         "age": extraction.age,
         "residence": extraction.residence,
@@ -172,6 +172,8 @@ def apply_text_edits(draft: ProfileDraft, text: str) -> ProfileDraft:
         elif target in {"height", "weight"}:
             try: value = float(normalize_digits(value))
             except ValueError: continue
+        elif target == "gender":
+            value = normalize_gender(value)
         if target in {"phone", "whatsapp", "telegram_username"}:
             private[target] = value
         else:
@@ -192,12 +194,16 @@ class ProfileValidation:
 
 def validate_profile_extraction(extraction: Any, private_contact_data: dict) -> ProfileValidation:
     missing = []
-    if extraction.gender not in {"male", "female"}: missing.append("gender")
+    gender = extraction.gender.strip().lower() if isinstance(extraction.gender, str) else extraction.gender
+    if not gender: missing.append("gender")
+    elif gender not in {"male", "female"}: errors_gender = "نوع الإعلان يجب أن يكون عريساً أو عروساً (male/female)."
+    else: errors_gender = None
     if extraction.age is None: missing.append("age")
     if not extraction.residence: missing.append("residence")
     if not (private_contact_data.get("phone") or private_contact_data.get("telegram_username") or private_contact_data.get("whatsapp")): missing.append("contact")
     if extraction.marital_status in NON_SINGLE_STATUSES and extraction.children_count is None: missing.append("children_count")
     errors = []
+    if errors_gender: errors.append(errors_gender)
     if extraction.age is not None and not 18 <= extraction.age <= 100: errors.append("العمر يجب أن يكون بين 18 و100 سنة.")
     if extraction.children_count is not None and extraction.children_count < 0: errors.append("عدد الأولاد لا يمكن أن يكون سالباً.")
     return ProfileValidation(tuple(missing), tuple(errors))
