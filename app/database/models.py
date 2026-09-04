@@ -22,10 +22,10 @@ class Profile(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     request_number: Mapped[int | None] = mapped_column(Integer, unique=True, index=True, nullable=True)
-    gender: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    gender: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
     name: Mapped[str | None] = mapped_column(String(120))
-    age: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
-    residence: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
+    age: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    residence: Mapped[str | None] = mapped_column(String(200), nullable=True, index=True)
     marital_status: Mapped[str | None] = mapped_column(String(80), index=True)
     children_count: Mapped[int | None] = mapped_column(Integer, index=True)
     occupation: Mapped[str | None] = mapped_column(String(160), index=True)
