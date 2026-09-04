@@ -20,7 +20,7 @@ from app.database.repositories import OrderRepository, ProfileRepository
 from app.handlers import admin_router
 from app.services.admin_meta import create_backup, get_order_meta, get_profile_meta, list_audit_logs, log_admin_action, metrics, payment_method, service_price
 from app.services.profile_quality import score_profile
-from app.services.profiles import ProfileDraft
+from app.services.profiles import ProfileDraft, format_marriage_post
 
 ADMIN_V2_INPUT = admin_router.ADMIN_V2_INPUT
 END = ConversationHandler.END
@@ -59,6 +59,57 @@ def _viewer_blocked(data: str) -> bool:
         "admin:orders:delete:pending",
     )
     return any(data.startswith(prefix) for prefix in write_prefixes)
+
+
+def _publish_view_keyboard(number: int, publication_status: str) -> InlineKeyboardMarkup:
+    if publication_status == "published":
+        action = InlineKeyboardButton("↩️ إلغاء النشر", callback_data=f"admin:v2:unpublish:{number}")
+    else:
+        action = InlineKeyboardButton("📣 نشر الإعلان", callback_data=f"admin:v2:publish:{number}")
+    return InlineKeyboardMarkup([
+        [action],
+        [InlineKeyboardButton("⬅️ الإعلان", callback_data=f"admin:v2:profile:{number}")],
+        [InlineKeyboardButton("⬅️ لوحة الأدمن", callback_data="admin:v2:dashboard")],
+    ])
+
+
+async def _show_publish_view(update: Any, context: Any, number: int) -> int:
+    with _session(context) as session:
+        profile = ProfileRepository(session).get_with_contact(number)
+        if profile is None:
+            await update.callback_query.edit_message_text("❌ ما لقينا الإعلان.", reply_markup=admin_router.admin_v2._dashboard_keyboard())
+            return END
+        meta = get_profile_meta(session, int(profile["id"]), create=True)
+        publication_status = meta.publication_status
+        session.commit()
+    await update.callback_query.edit_message_text(
+        format_marriage_post(profile),
+        reply_markup=_publish_view_keyboard(number, publication_status),
+    )
+    return END
+
+
+async def _warn_before_incomplete_save(update: Any, context: Any) -> int:
+    draft: ProfileDraft | None = context.user_data.get("v2_draft")
+    if draft is None:
+        return await admin_router.admin_callback(update, context)
+    quality = score_profile(draft)
+    if not quality.missing_fields:
+        return await admin_router.admin_callback(update, context)
+    missing = "، ".join(quality.missing_fields)
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ متابعة وحفظ رغم النقص", callback_data="admin:v2:add:save:force")],
+        [InlineKeyboardButton("✏️ تعديل البيانات", callback_data="admin:v2:add:edit")],
+        [InlineKeyboardButton("❌ إلغاء", callback_data="admin:v2:add:cancel")],
+    ])
+    await update.callback_query.edit_message_text(
+        "⚠️ في معلومات ناقصة بالإعلان:\n\n"
+        f"{missing}\n\n"
+        "المعلومات الناقصة ما رح تمنع الحفظ، لكن الأفضل تكملها قبل النشر.\n\n"
+        "شو بتحب تعمل؟",
+        reply_markup=keyboard,
+    )
+    return ADMIN_V2_INPUT
 
 
 async def _audit_screen(update: Any, context: Any) -> int:
@@ -108,13 +159,15 @@ async def _settings_screen(update: Any, context: Any) -> int:
 async def _incomplete_profiles_screen(update: Any, context: Any) -> int:
     with _session(context) as session:
         stmt = (
-            select(Profile, ProfileAdminMeta)
-            .join(ProfileAdminMeta, ProfileAdminMeta.profile_id == Profile.id)
-            .where(ProfileAdminMeta.publication_status == "review")
-            .order_by(desc(Profile.updated_at))
-            .limit(15)
+            select(ProfileAdminMeta).where(ProfileAdminMeta.publication_status == "review")
+            .order_by(desc(ProfileAdminMeta.updated_at)).limit(15)
         )
-        rows = list(session.execute(stmt).all())
+        metas = list(session.scalars(stmt).all())
+        rows = []
+        for meta in metas:
+            profile = session.get(__import__("app.database.models", fromlist=["Profile"]).Profile, meta.profile_id)
+            if profile:
+                rows.append((profile, meta))
     if not rows:
         await update.callback_query.edit_message_text(
             "⚠️ بحاجة لاستكمال\n\n✅ ما في إعلانات معلّقة للمراجعة حالياً.",
@@ -124,7 +177,7 @@ async def _incomplete_profiles_screen(update: Any, context: Any) -> int:
     text_body = "⚠️ إعلانات بحاجة لاستكمال\n\n"
     buttons = []
     for profile, meta in rows:
-        text_body += f"📌 {profile.request_number} — {profile.name or 'بدون اسم'} — {profile.age} سنة — {profile.residence}\n⭐ الجودة: {meta.quality_score}/100\n\n"
+        text_body += f"📌 {profile.request_number} — {profile.name or 'بدون اسم'} — {profile.age or '—'} سنة — {profile.residence or '—'}\n⭐ الجودة: {meta.quality_score}/100\n\n"
         buttons.append([InlineKeyboardButton(f"📌 فتح {profile.request_number}", callback_data=f"admin:v2:profile:{profile.request_number}")])
     buttons.append([InlineKeyboardButton("⬅️ لوحة الأدمن", callback_data="admin:v2:dashboard")])
     await update.callback_query.edit_message_text(text_body, reply_markup=InlineKeyboardMarkup(buttons))
@@ -220,6 +273,22 @@ async def admin_callback(update: Any, context: Any) -> int:
     if role == "viewer" and _viewer_blocked(data):
         await update.callback_query.answer("👀 حساب المشاهدة لا يملك صلاحية التعديل أو الحذف.", show_alert=True)
         return END
+
+    publish_match = re.fullmatch(r"admin:v2:publish:text:(\d+)", data)
+    if publish_match:
+        return await _show_publish_view(update, context, int(publish_match.group(1)))
+
+    if data == "admin:v2:add:save":
+        return await _warn_before_incomplete_save(update, context)
+    if data == "admin:v2:add:save:force":
+        query = update.callback_query
+        original = query.data
+        query.data = "admin:v2:add:save"
+        try:
+            return await admin_router.admin_callback(update, context)
+        finally:
+            query.data = original
+
     if data == "admin:v2:audit":
         return await _audit_screen(update, context)
     if data == "admin:v2:settings":
