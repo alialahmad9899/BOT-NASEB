@@ -194,7 +194,7 @@ class ProfileValidation:
 
 def validate_profile_extraction(extraction: Any, private_contact_data: dict) -> ProfileValidation:
     missing = []
-    gender = extraction.gender.strip().lower() if isinstance(extraction.gender, str) else extraction.gender
+    gender = normalize_gender(extraction.gender) if isinstance(extraction.gender, str) and extraction.gender.strip() else None
     errors_gender = None
     if not gender:
         missing.append("gender")
