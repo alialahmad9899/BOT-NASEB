@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.handlers import admin_v2
 from app.handlers.admin_entry import admin_callback, admin_text
 from app.handlers.client import client_callback
 from app.handlers.safe_order_views import (
@@ -50,6 +51,10 @@ def _last_int(data: str) -> int | None:
 
 async def admin_callback_router(update: Any, context: Any) -> int:
     data = update.callback_query.data or ""
+    # Route the force-save action directly to the hardened handler. Never mutate
+    # CallbackQuery.data; python-telegram-bot exposes it as immutable.
+    if data == "admin:v2:add:save:force":
+        return await admin_v2._save_add(update, context)
     if _admin_order_list_requested(data):
         page, filter_name = _admin_order_list_args(data)
         return await admin_orders_view(update, context, page, filter_name)
