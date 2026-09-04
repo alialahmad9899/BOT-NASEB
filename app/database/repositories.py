@@ -41,10 +41,10 @@ class ProfileRepository:
         contact = draft.private_contact_data
         profile = Profile(
             request_number=None,
-            gender=public["gender"],
+            gender=public.get("gender"),
             name=public.get("name"),
-            age=int(public["age"]),
-            residence=public["residence"],
+            age=public.get("age"),
+            residence=public.get("residence"),
             marital_status=public.get("marital_status"),
             children_count=public.get("children_count"),
             occupation=public.get("occupation"),
