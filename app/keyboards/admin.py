@@ -1,28 +1,45 @@
-"""Admin keyboard builders (legacy-compatible + Admin V2 dashboard)."""
+"""Admin keyboard builders.
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+Primary admin navigation uses a persistent Telegram reply keyboard so the
+main controls stay in the keyboard area instead of appearing as message
+buttons. Contextual confirm/destructive actions remain inline where useful.
+"""
+
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 
 
-def admin_main_keyboard() -> InlineKeyboardMarkup:
-    """Compact grouped admin home used by /start and legacy flows."""
-    return InlineKeyboardMarkup([
+ADMIN_BOTTOM_BUTTONS = (
+    "➕ إضافة إعلان",
+    "🔎 البحث الذكي",
+    "📋 إدارة الإعلانات",
+    "💳 طلبات التواصل",
+    "🔒 الحجوزات",
+    "🗃️ الأرشيف",
+    "⚠️ المعطلة",
+    "📊 التقارير",
+    "🧾 سجل العمليات",
+    "💾 النسخ الاحتياطية",
+    "⚙️ الإعدادات",
+    "🏠 الرئيسية",
+    "⬅️ رجوع للوحة الأدمن",
+)
+
+
+def admin_main_keyboard() -> ReplyKeyboardMarkup:
+    """Persistent bottom navigation shown to admins."""
+    return ReplyKeyboardMarkup(
         [
-            InlineKeyboardButton("🔎 الإعلانات والبحث", callback_data="admin:v2:section:ads"),
-            InlineKeyboardButton("➕ إضافة إعلان", callback_data="admin:v2:add"),
+            ["➕ إضافة إعلان", "🔎 البحث الذكي"],
+            ["📋 إدارة الإعلانات", "💳 طلبات التواصل"],
+            ["🔒 الحجوزات", "🗃️ الأرشيف", "⚠️ المعطلة"],
+            ["📊 التقارير", "🧾 سجل العمليات"],
+            ["💾 النسخ الاحتياطية", "⚙️ الإعدادات"],
+            ["🏠 الرئيسية", "⬅️ رجوع للوحة الأدمن"],
         ],
-        [
-            InlineKeyboardButton("💳 الطلبات والتواصل", callback_data="admin:v2:section:orders"),
-            InlineKeyboardButton("🔒 الحجوزات", callback_data="admin:v2:section:reservations"),
-        ],
-        [
-            InlineKeyboardButton("📣 النشر والمحتوى", callback_data="admin:v2:section:publishing"),
-            InlineKeyboardButton("📊 التقارير والمتابعة", callback_data="admin:v2:section:reports"),
-        ],
-        [
-            InlineKeyboardButton("🛡️ الأمان والنسخ", callback_data="admin:v2:section:security"),
-            InlineKeyboardButton("⚙️ الإعدادات", callback_data="admin:v2:section:settings"),
-        ],
-    ])
+        resize_keyboard=True,
+        is_persistent=True,
+        input_field_placeholder="اختر من لوحة الأدمن بالأسفل",
+    )
 
 
 def back_to_admin_keyboard() -> InlineKeyboardMarkup:
@@ -64,7 +81,6 @@ def profile_actions_keyboard(request_number: int, status: str = "active") -> Inl
 
 
 def order_actions_keyboard(order_number: int) -> InlineKeyboardMarkup:
-    # Legacy callback names are retained so old messages remain clickable.
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🔎 التفاصيل", callback_data=f"admin:order:view:{order_number}"), InlineKeyboardButton("✅ تأكيد الدفع", callback_data=f"admin:order:confirm:{order_number}")],
         [InlineKeyboardButton("❌ إلغاء الطلب", callback_data=f"admin:order:reject:{order_number}"), InlineKeyboardButton("🗑️ حذف الطلب", callback_data=f"admin:order:delete:{order_number}")],
