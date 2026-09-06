@@ -23,6 +23,7 @@ BOTTOM_TO_CALLBACK = {
 }
 
 HOME_BUTTONS = {"🏠 الرئيسية", "⬅️ رجوع للوحة الأدمن"}
+ADMIN_BOTTOM_BUTTONS = tuple(BOTTOM_TO_CALLBACK) + tuple(sorted(HOME_BUTTONS))
 
 
 def is_admin_bottom_text(text: str | None) -> bool:
