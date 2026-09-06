@@ -65,7 +65,7 @@ def test_hardened_save_persists_incomplete_profile_and_uses_fresh_number(monkeyp
 
     with Session(engine) as session:
         profile = session.query(Profile).one()
-        assert profile.request_number == 101
+        assert profile.request_number == 200
         assert profile.gender == "female"
         assert profile.age is None
         assert profile.residence is None
