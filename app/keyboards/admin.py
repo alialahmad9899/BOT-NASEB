@@ -1,9 +1,4 @@
-"""Admin keyboard builders.
-
-Primary admin navigation uses a persistent Telegram reply keyboard so the
-main controls stay in the keyboard area instead of appearing as message
-buttons. Contextual confirm/destructive actions remain inline where useful.
-"""
+"""Admin keyboard builders (legacy-compatible + persistent bottom navigation)."""
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 
@@ -25,8 +20,30 @@ ADMIN_BOTTOM_BUTTONS = (
 )
 
 
-def admin_main_keyboard() -> ReplyKeyboardMarkup:
-    """Persistent bottom navigation shown to admins."""
+def admin_main_keyboard() -> InlineKeyboardMarkup:
+    """Compact grouped admin home kept for legacy callback flows/tests."""
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("🔎 الإعلانات والبحث", callback_data="admin:v2:section:ads"),
+            InlineKeyboardButton("➕ إضافة إعلان", callback_data="admin:v2:add"),
+        ],
+        [
+            InlineKeyboardButton("💳 الطلبات والتواصل", callback_data="admin:v2:section:orders"),
+            InlineKeyboardButton("🔒 الحجوزات", callback_data="admin:v2:section:reservations"),
+        ],
+        [
+            InlineKeyboardButton("📣 النشر والمحتوى", callback_data="admin:v2:section:publishing"),
+            InlineKeyboardButton("📊 التقارير والمتابعة", callback_data="admin:v2:section:reports"),
+        ],
+        [
+            InlineKeyboardButton("🛡️ الأمان والنسخ", callback_data="admin:v2:section:security"),
+            InlineKeyboardButton("⚙️ الإعدادات", callback_data="admin:v2:section:settings"),
+        ],
+    ])
+
+
+def admin_bottom_keyboard() -> ReplyKeyboardMarkup:
+    """Persistent admin navigation shown in Telegram's bottom keyboard area."""
     return ReplyKeyboardMarkup(
         [
             ["➕ إضافة إعلان", "🔎 البحث الذكي"],
@@ -83,7 +100,7 @@ def profile_actions_keyboard(request_number: int, status: str = "active") -> Inl
 def order_actions_keyboard(order_number: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🔎 التفاصيل", callback_data=f"admin:order:view:{order_number}"), InlineKeyboardButton("✅ تأكيد الدفع", callback_data=f"admin:order:confirm:{order_number}")],
-        [InlineKeyboardButton("❌ إلغاء الطلب", callback_data=f"admin:order:reject:{order_number}"), InlineKeyboardButton("🗑️ حذف الطلب", callback_data=f"admin:order:delete:{order_number}")],
+        [InlineKeyboardButton("❌ إلغاء الطلب", callback_data=f"admin:order:delete:{order_number}"), InlineKeyboardButton("🗑️ حذف الطلب", callback_data=f"admin:order:delete:{order_number}")],
         [InlineKeyboardButton("⬅️ طلبات التواصل", callback_data="admin:orders")],
         [InlineKeyboardButton("⬅️ لوحة الأدمن", callback_data="admin:menu")],
     ])
