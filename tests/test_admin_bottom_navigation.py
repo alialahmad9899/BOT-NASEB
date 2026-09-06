@@ -56,11 +56,12 @@ def test_admin_bottom_handler_is_registered_before_conversations():
     application = build_application(settings)
     handlers = application.handlers[0]
     first_handler = handlers[0]
-    second_handler = handlers[1]
+    conversation_handlers = [handler for handler in handlers if isinstance(handler, ConversationHandler)]
 
     assert isinstance(first_handler, MessageHandler)
     assert first_handler.callback is admin_bottom_text_router
-    assert isinstance(second_handler, ConversationHandler)
+    assert conversation_handlers
+    assert handlers.index(first_handler) < handlers.index(conversation_handlers[0])
 
 
 def test_home_button_clears_current_flow_and_returns_dashboard():
