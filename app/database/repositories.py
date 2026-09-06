@@ -10,7 +10,7 @@ from app.database.admin_models import ProfileAdminMeta
 from app.database.models import Order, Profile, ProfileContact
 from app.services.profiles import ProfileDraft
 
-REQUEST_NUMBER_OFFSET = 100
+REQUEST_NUMBER_START = 200
 ORDER_NUMBER_OFFSET = 5000
 
 
@@ -33,8 +33,10 @@ class ProfileRepository:
         self.session = session
 
     def peek_next_request_number(self) -> int:
-        last_id = self.session.scalar(select(func.max(Profile.id))) or 0
-        return REQUEST_NUMBER_OFFSET + int(last_id) + 1
+        last_request_number = self.session.scalar(select(func.max(Profile.request_number)))
+        if last_request_number is None:
+            return REQUEST_NUMBER_START
+        return max(REQUEST_NUMBER_START, int(last_request_number) + 1)
 
     def create(self, draft: ProfileDraft, request_number: int | None = None) -> Profile:
         public = draft.public_data
@@ -58,7 +60,7 @@ class ProfileRepository:
         )
         self.session.add(profile)
         self.session.flush()
-        profile.request_number = request_number if request_number is not None else REQUEST_NUMBER_OFFSET + profile.id
+        profile.request_number = request_number if request_number is not None else self.peek_next_request_number()
         self.session.add(ProfileContact(
             profile_id=profile.id,
             phone=contact.get("phone"),
