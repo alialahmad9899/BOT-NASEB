@@ -52,14 +52,8 @@ class _MessageCallbackProxy:
         return None
 
     async def edit_message_text(self, text: str, *args: Any, **kwargs: Any) -> Any:
-        kwargs.pop("reply_markup", None)
-        from app.keyboards.admin import admin_main_keyboard
-        return await self._update.effective_message.reply_text(
-            text,
-            *args,
-            reply_markup=admin_main_keyboard(),
-            **kwargs,
-        )
+        # Preserve contextual inline buttons such as edit/delete/confirm actions.
+        return await self._update.effective_message.reply_text(text, *args, **kwargs)
 
 
 async def admin_bottom_text_router(update: Any, context: Any) -> int | None:
