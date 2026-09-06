@@ -71,10 +71,10 @@ async def admin_bottom_text_router(update: Any, context: Any) -> int | None:
     context.user_data["v2_admin_user_id"] = int(user.id)
 
     if text in HOME_BUTTONS:
-        from app.keyboards.admin import admin_main_keyboard
+        from app.keyboards.admin import admin_bottom_keyboard
         await update.effective_message.reply_text(
             _dashboard_text(context),
-            reply_markup=admin_main_keyboard(),
+            reply_markup=admin_bottom_keyboard(),
         )
         return admin_v2.END
 
