@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hmac
 import logging
+import re
 from typing import Any
 
 import uvicorn
@@ -21,7 +22,7 @@ from app.database.models import Base
 from app.database import admin_models as _admin_models  # noqa: F401 - registers additive Admin V2 tables
 from app.handlers.admin import ADD_EDIT, ADD_RAW, DELETE_REQUEST, DISABLE_REQUEST, EDIT_FIELDS, EDIT_REQUEST, SEARCH_TEXT
 from app.handlers.admin_entry import ADMIN_V2_INPUT, admin_callback, admin_photo, admin_text
-from app.handlers.admin_bottom import admin_bottom_text_router
+from app.handlers.admin_bottom import ADMIN_BOTTOM_BUTTONS, admin_bottom_text_router
 from app.handlers.client import SEARCH_CONFIRM, SEARCH_TEXT as CLIENT_SEARCH_TEXT, client_text
 from app.handlers.payment import (
     WHATSAPP_CONFIRM,
@@ -47,6 +48,12 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger("bot-naseb")
 
 
+def _admin_bottom_filter() -> filters.BaseFilter:
+    """Match only the fixed bottom-menu labels, so ordinary admin text is untouched."""
+    escaped = "|".join(re.escape(label) for label in ADMIN_BOTTOM_BUTTONS)
+    return filters.Regex(rf"^(?:{escaped})$")
+
+
 def build_application(settings: Settings) -> Application:
     application = Application.builder().token(settings.telegram_bot_token).concurrent_updates(False).build()
     application.bot_data["settings"] = settings
@@ -63,6 +70,17 @@ def build_application(settings: Settings) -> Application:
     application.bot_data["engine"] = engine
     application.bot_data["session_factory"] = session_factory
     application.bot_data["ai_service"] = GeminiAIService(settings.ai_api_key, settings.ai_model)
+
+    # Bottom admin navigation must run BEFORE ConversationHandler: reply-keyboard
+    # buttons arrive as normal text messages, while active conversations otherwise
+    # consume those messages first. The exact-label filter prevents normal text from
+    # being intercepted.
+    application.add_handler(
+        MessageHandler(
+            _admin_bottom_filter() & filters.User(user_id=settings.admin_user_ids),
+            admin_bottom_text_router,
+        )
+    )
 
     admin_conversation = ConversationHandler(
         entry_points=[CallbackQueryHandler(admin_callback_router, pattern=r"^admin:")],
@@ -114,10 +132,6 @@ def build_application(settings: Settings) -> Application:
     application.add_handler(admin_conversation)
     application.add_handler(payment_conversation)
     application.add_handler(CallbackQueryHandler(stale_payment_callback, pattern=r"^client:payment:(?:submit(?:[:].*)?|cancel)$"))
-    application.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND & filters.User(user_id=settings.admin_user_ids),
-        admin_bottom_text_router,
-    ))
     application.add_handler(client_conversation)
     application.add_error_handler(application_error)
     return application
