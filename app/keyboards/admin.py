@@ -100,7 +100,7 @@ def profile_actions_keyboard(request_number: int, status: str = "active") -> Inl
 def order_actions_keyboard(order_number: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🔎 التفاصيل", callback_data=f"admin:order:view:{order_number}"), InlineKeyboardButton("✅ تأكيد الدفع", callback_data=f"admin:order:confirm:{order_number}")],
-        [InlineKeyboardButton("❌ إلغاء الطلب", callback_data=f"admin:order:delete:{order_number}"), InlineKeyboardButton("🗑️ حذف الطلب", callback_data=f"admin:order:delete:{order_number}")],
+        [InlineKeyboardButton("❌ إلغاء الطلب", callback_data=f"admin:order:reject:{order_number}"), InlineKeyboardButton("🗑️ حذف الطلب", callback_data=f"admin:order:delete:{order_number}")],
         [InlineKeyboardButton("⬅️ طلبات التواصل", callback_data="admin:orders")],
         [InlineKeyboardButton("⬅️ لوحة الأدمن", callback_data="admin:menu")],
     ])
