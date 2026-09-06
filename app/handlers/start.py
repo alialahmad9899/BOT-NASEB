@@ -60,8 +60,8 @@ async def start_command(update: Any, context: Any) -> None:
     settings = context.application.bot_data["settings"]
     content = start_content_for_user(user.id, settings.admin_user_ids)
     if content.role == "admin":
-        from app.keyboards.admin import admin_main_keyboard
-        keyboard = admin_main_keyboard()
+        from app.keyboards.admin import admin_bottom_keyboard
+        keyboard = admin_bottom_keyboard()
     else:
         from app.keyboards.client import client_main_keyboard
         keyboard = client_main_keyboard()
