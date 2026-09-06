@@ -3,10 +3,12 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 from telegram import ReplyKeyboardMarkup
+from telegram.ext import ConversationHandler, MessageHandler
 
+from app.config import Settings
 from app.handlers.admin_bottom import BOTTOM_TO_CALLBACK, HOME_BUTTONS, admin_bottom_text_router, is_admin_bottom_text
-from app.keyboards.admin import admin_bottom_keyboard
 from app.handlers.start import start_content_for_user
+from app.keyboards.admin import admin_bottom_keyboard, admin_main_keyboard
 
 
 def test_admin_bottom_keyboard_is_reply_keyboard():
@@ -21,7 +23,6 @@ def test_admin_bottom_keyboard_is_reply_keyboard():
 
 
 def test_legacy_admin_main_keyboard_remains_inline_compatible():
-    from app.keyboards.admin import admin_main_keyboard
     assert hasattr(admin_main_keyboard(), "inline_keyboard")
 
 
@@ -41,6 +42,25 @@ def test_bottom_keyboard_labels_have_explicit_routing():
 
 def test_non_navigation_text_is_not_intercepted():
     assert is_admin_bottom_text("هذا إعلان جديد") is False
+
+
+def test_admin_bottom_handler_is_registered_before_conversations():
+    from app.main import build_application
+
+    settings = Settings(
+        telegram_bot_token="123456:ABCDEF",
+        admin_user_ids=frozenset({123}),
+        ai_api_key=None,
+        database_url=None,
+    )
+    application = build_application(settings)
+    handlers = application.handlers[0]
+    first_handler = handlers[0]
+    second_handler = handlers[1]
+
+    assert isinstance(first_handler, MessageHandler)
+    assert first_handler.callback is admin_bottom_text_router
+    assert isinstance(second_handler, ConversationHandler)
 
 
 def test_home_button_clears_current_flow_and_returns_dashboard():
