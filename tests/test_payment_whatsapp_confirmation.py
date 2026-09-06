@@ -32,9 +32,9 @@ def make_profile(session):
     return profile
 
 
-def make_context(session):
+def make_context(session, profile_request_number):
     return SimpleNamespace(
-        user_data={"payment_profile_request": 101},
+        user_data={"payment_profile_request": profile_request_number},
         application=SimpleNamespace(
             bot_data={
                 "session_factory": lambda: session,
@@ -55,8 +55,8 @@ def make_update(text="09 348 883 92"):
 
 def test_whatsapp_number_is_confirmed_before_order_is_created():
     with make_session() as session:
-        make_profile(session)
-        context = make_context(session)
+        profile = make_profile(session)
+        context = make_context(session, profile.request_number)
         update = make_update()
 
         state = asyncio.run(payment_whatsapp_text(update, context))
@@ -70,8 +70,8 @@ def test_whatsapp_number_is_confirmed_before_order_is_created():
 
 def test_confirmed_whatsapp_creates_contact_order():
     with make_session() as session:
-        make_profile(session)
-        context = make_context(session)
+        profile = make_profile(session)
+        context = make_context(session, profile.request_number)
         context.user_data["pending_whatsapp"] = "+963934888392"
         update = make_update()
 
