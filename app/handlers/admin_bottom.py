@@ -6,7 +6,6 @@ from types import SimpleNamespace
 from typing import Any
 
 from app.handlers import admin_v2
-from app.handlers.safe_routing import admin_callback_router
 from app.services.admin_meta import expire_reservations, metrics
 from app.services.permissions import is_admin
 
@@ -32,7 +31,10 @@ def is_admin_bottom_text(text: str | None) -> bool:
 
 
 def _dashboard_text(context: Any) -> str:
-    with context.application.bot_data["session_factory"]() as session:
+    factory = context.application.bot_data.get("session_factory")
+    if factory is None:
+        return "❌ قاعدة البيانات غير مهيأة."
+    with factory() as session:
         expire_reservations(session)
         snapshot = metrics(session)
     return admin_v2._dashboard_text(snapshot)
@@ -70,7 +72,6 @@ async def admin_bottom_text_router(update: Any, context: Any) -> int | None:
     if user is None or not is_admin(int(user.id), settings.admin_user_ids):
         return None
 
-    # Bottom navigation is global: pressing it cancels an in-progress admin flow.
     context.user_data.clear()
     context.user_data["v2_admin_user_id"] = int(user.id)
 
@@ -82,6 +83,7 @@ async def admin_bottom_text_router(update: Any, context: Any) -> int | None:
         )
         return admin_v2.END
 
+    from app.handlers.safe_routing import admin_callback_router
     callback_data = BOTTOM_TO_CALLBACK[text]
     proxy = _MessageCallbackProxy(update, callback_data)
     callback_update = SimpleNamespace(
