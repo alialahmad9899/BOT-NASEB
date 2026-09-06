@@ -5,12 +5,12 @@ from unittest.mock import AsyncMock
 from telegram import ReplyKeyboardMarkup
 
 from app.handlers.admin_bottom import BOTTOM_TO_CALLBACK, HOME_BUTTONS, admin_bottom_text_router, is_admin_bottom_text
-from app.keyboards.admin import admin_main_keyboard
+from app.keyboards.admin import admin_bottom_keyboard
 from app.handlers.start import start_content_for_user
 
 
-def test_admin_main_keyboard_is_bottom_reply_keyboard():
-    keyboard = admin_main_keyboard()
+def test_admin_bottom_keyboard_is_reply_keyboard():
+    keyboard = admin_bottom_keyboard()
     assert isinstance(keyboard, ReplyKeyboardMarkup)
     labels = [button.text for row in keyboard.keyboard for button in row]
     assert "➕ إضافة إعلان" in labels
@@ -18,6 +18,11 @@ def test_admin_main_keyboard_is_bottom_reply_keyboard():
     assert "💳 طلبات التواصل" in labels
     assert "⬅️ رجوع للوحة الأدمن" in labels
     assert "🏠 الرئيسية" in labels
+
+
+def test_legacy_admin_main_keyboard_remains_inline_compatible():
+    from app.keyboards.admin import admin_main_keyboard
+    assert hasattr(admin_main_keyboard(), "inline_keyboard")
 
 
 def test_admin_start_keeps_admin_role_separate_from_client():
@@ -55,8 +60,6 @@ def test_home_button_clears_current_flow_and_returns_dashboard():
         effective_message=SimpleNamespace(text="⬅️ رجوع للوحة الأدمن", reply_text=reply_text),
     )
 
-    # The database is intentionally unavailable in this isolated routing test;
-    # the router should fail only when it attempts to render live dashboard data.
     try:
         asyncio.run(admin_bottom_text_router(update, context))
     except Exception:
