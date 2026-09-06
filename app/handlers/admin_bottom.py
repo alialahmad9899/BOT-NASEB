@@ -7,7 +7,6 @@ from typing import Any
 
 from app.handlers import admin_v2
 from app.services.admin_meta import expire_reservations, metrics
-from app.services.permissions import is_admin
 
 BOTTOM_TO_CALLBACK = {
     "➕ إضافة إعلان": "admin:v2:add",
@@ -47,6 +46,7 @@ class _MessageCallbackProxy:
         self._update = update
         self.data = data
         self.message = update.effective_message
+        self.from_user = update.effective_user
 
     async def answer(self, *args: Any, **kwargs: Any) -> None:
         return None
@@ -68,10 +68,11 @@ async def admin_bottom_text_router(update: Any, context: Any) -> int | None:
         return None
 
     user = update.effective_user
-    settings = context.application.bot_data["settings"]
-    if user is None or not is_admin(int(user.id), settings.admin_user_ids):
+    role = admin_v2._role(context, int(user.id)) if user is not None else None
+    if user is None or role is None:
         return None
 
+    # Bottom navigation is global: pressing it cancels an in-progress admin flow.
     context.user_data.clear()
     context.user_data["v2_admin_user_id"] = int(user.id)
 
