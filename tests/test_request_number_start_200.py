@@ -36,15 +36,17 @@ def test_next_request_number_starts_at_200_on_empty_database():
         assert repository.peek_next_request_number() == 200
 
         first = repository.create(_draft("آية"))
+        first_number = first.request_number
         session.commit()
 
-        assert first.request_number == 200
+        assert first_number == 200
         assert repository.peek_next_request_number() == 201
 
         second = repository.create(_draft("سارة"))
+        second_number = second.request_number
         session.commit()
 
-    assert second.request_number == 201
+    assert second_number == 201
 
 
 def test_existing_request_numbers_are_preserved_and_next_number_continues_from_200():
@@ -68,6 +70,7 @@ def test_existing_request_numbers_are_preserved_and_next_number_continues_from_2
         assert repository.peek_next_request_number() == 200
 
         created = repository.create(_draft("إعلان جديد"))
+        created_number = created.request_number
         session.commit()
 
-    assert created.request_number == 200
+    assert created_number == 200
