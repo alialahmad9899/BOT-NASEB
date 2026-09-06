@@ -21,6 +21,7 @@ from app.database.models import Base
 from app.database import admin_models as _admin_models  # noqa: F401 - registers additive Admin V2 tables
 from app.handlers.admin import ADD_EDIT, ADD_RAW, DELETE_REQUEST, DISABLE_REQUEST, EDIT_FIELDS, EDIT_REQUEST, SEARCH_TEXT
 from app.handlers.admin_entry import ADMIN_V2_INPUT, admin_callback, admin_photo, admin_text
+from app.handlers.admin_bottom import admin_bottom_text_router
 from app.handlers.client import SEARCH_CONFIRM, SEARCH_TEXT as CLIENT_SEARCH_TEXT, client_text
 from app.handlers.payment import (
     WHATSAPP_CONFIRM,
@@ -55,7 +56,6 @@ def build_application(settings: Settings) -> Application:
         Base.metadata.create_all(engine)
         session_factory = build_session_factory(engine)
         if session_factory is not None:
-            # Add only missing Admin V2 metadata rows; never alter/delete existing profiles/orders.
             with session_factory() as session:
                 backfill_meta(session)
     else:
@@ -114,6 +114,10 @@ def build_application(settings: Settings) -> Application:
     application.add_handler(admin_conversation)
     application.add_handler(payment_conversation)
     application.add_handler(CallbackQueryHandler(stale_payment_callback, pattern=r"^client:payment:(?:submit(?:[:].*)?|cancel)$"))
+    application.add_handler(MessageHandler(
+        filters.TEXT & ~filters.COMMAND & filters.User(user_id=settings.admin_user_ids),
+        admin_bottom_text_router,
+    ))
     application.add_handler(client_conversation)
     application.add_error_handler(application_error)
     return application
