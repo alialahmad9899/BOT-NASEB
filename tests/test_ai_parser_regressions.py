@@ -14,3 +14,9 @@ def test_real_world_syrian_marriage_text_extracts_age_and_residence_without_maki
     assert parsed.phone == "0948484848"
     assert parsed.name is None
     assert parsed.partner_requirements == "بدي شب منيح ما بدخن وطويل"
+
+
+def test_basic_profile_extraction_treats_shabba_as_female():
+    parsed = basic_profile_extraction("شابة من دمشق\nعمري 24\nبدي شاب محترم")
+    assert parsed.gender == "female"
+    assert parsed.residence == "دمشق"
