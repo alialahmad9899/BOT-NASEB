@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from threading import Lock
 from decimal import Decimal
 
 from sqlalchemy import delete, desc, func, or_, select
@@ -12,6 +13,7 @@ from app.services.profiles import ProfileDraft
 
 REQUEST_NUMBER_START = 200
 ORDER_NUMBER_OFFSET = 5000
+_PROFILE_CREATE_LOCK = Lock()
 
 
 @dataclass(frozen=True)
@@ -39,36 +41,41 @@ class ProfileRepository:
         return max(REQUEST_NUMBER_START, int(last_request_number) + 1)
 
     def create(self, draft: ProfileDraft, request_number: int | None = None) -> Profile:
-        public = draft.public_data
-        contact = draft.private_contact_data
-        profile = Profile(
-            request_number=None,
-            gender=public.get("gender"),
-            name=public.get("name"),
-            age=public.get("age"),
-            residence=public.get("residence"),
-            marital_status=public.get("marital_status"),
-            children_count=public.get("children_count"),
-            occupation=public.get("occupation"),
-            education=public.get("education"),
-            height=public.get("height"),
-            weight=public.get("weight"),
-            appearance=public.get("appearance"),
-            partner_requirements=public.get("partner_requirements"),
-            photo_file_id=public.get("photo_file_id"),
-            status="active",
-        )
-        self.session.add(profile)
-        self.session.flush()
-        profile.request_number = request_number if request_number is not None else self.peek_next_request_number()
-        self.session.add(ProfileContact(
-            profile_id=profile.id,
-            phone=contact.get("phone"),
-            telegram_username=contact.get("telegram_username"),
-            whatsapp=contact.get("whatsapp"),
-        ))
-        self.session.flush()
-        return profile
+        # Render currently runs one bot instance, so serialize creation inside
+        # the process to prevent two simultaneous managers from choosing the
+        # same MAX(request_number)+1.
+        with _PROFILE_CREATE_LOCK:
+            public = draft.public_data
+            contact = draft.private_contact_data
+            profile = Profile(
+                request_number=None,
+                gender=public.get("gender"),
+                name=public.get("name"),
+                age=public.get("age"),
+                residence=public.get("residence"),
+                marital_status=public.get("marital_status"),
+                children_count=public.get("children_count"),
+                occupation=public.get("occupation"),
+                education=public.get("education"),
+                height=public.get("height"),
+                weight=public.get("weight"),
+                appearance=public.get("appearance"),
+                partner_requirements=public.get("partner_requirements"),
+                photo_file_id=public.get("photo_file_id"),
+                status="active",
+            )
+            self.session.add(profile)
+            self.session.flush()
+            profile.request_number = request_number if request_number is not None else self.peek_next_request_number()
+            self.session.add(ProfileContact(
+                profile_id=profile.id,
+                phone=contact.get("phone"),
+                telegram_username=contact.get("telegram_username"),
+                whatsapp=contact.get("whatsapp"),
+            ))
+            self.session.flush()
+            return profile
+
 
     def get(self, request_number: int) -> Profile | None:
         return self.session.scalar(select(Profile).where(Profile.request_number == request_number))
