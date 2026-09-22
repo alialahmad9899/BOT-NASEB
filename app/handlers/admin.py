@@ -412,9 +412,7 @@ async def _show_pending_preview(update: Any, context: Any, extraction: ProfileEx
             message += f"\n\n⚠️ المعلومات الناقصة: {missing}"
         for error in validation.errors:
             message += f"\n⚠️ {error}"
-        can_save = False
-    else:
-        can_save = True
+    can_save = validation.ok
     message += "\n\nهل تريد حفظ الإعلان؟"
     markup = _add_preview_keyboard(can_save)
     if update.callback_query:
