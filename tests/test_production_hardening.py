@@ -55,9 +55,10 @@ def test_viewer_legacy_sensitive_callbacks_are_blocked():
     ]
     for callback in sensitive:
         assert admin_entry._viewer_blocked(callback) is True
-        assert admin_router_legacy._parse_archive_reason_callback(
-            "admin:v2:archive:reason:200:تمت الزيجة"
-        ) == (200, "تمت الزيجة")
+
+    assert admin_router_legacy._parse_archive_reason_callback(
+        "admin:v2:archive:reason:200:تمت الزيجة"
+    ) == (200, "تمت الزيجة")
     assert admin_router_legacy._parse_reservation_extension_callback(
         "admin:v2:reservation:extend:200:14"
     ) == (200, 14)
