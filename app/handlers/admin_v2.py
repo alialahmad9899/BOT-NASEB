@@ -216,12 +216,13 @@ def _order_actions(order: Order, payment_state: str, contact_state: str) -> Inli
     buttons = []
     if payment_state == "pending":
         buttons.append([InlineKeyboardButton("💰 تأكيد الدفع", callback_data=f"admin:v2:order:confirm:{order.order_number}"), InlineKeyboardButton("❌ رفض الدفع", callback_data=f"admin:v2:order:reject:{order.order_number}")])
-    if contact_state == "new":
-        buttons.append([InlineKeyboardButton("📞 تم التواصل", callback_data=f"admin:v2:order:contacted:{order.order_number}")])
-    if contact_state == "contacted":
-        buttons.append([InlineKeyboardButton("🤝 فتح التواصل", callback_data=f"admin:v2:order:opened:{order.order_number}")])
-    if contact_state == "opened":
-        buttons.append([InlineKeyboardButton("✅ إغلاق الطلب", callback_data=f"admin:v2:order:complete:{order.order_number}")])
+    elif payment_state == "paid":
+        if contact_state == "new":
+            buttons.append([InlineKeyboardButton("📞 تم التواصل", callback_data=f"admin:v2:order:contacted:{order.order_number}")])
+        elif contact_state == "contacted":
+            buttons.append([InlineKeyboardButton("🤝 فتح التواصل", callback_data=f"admin:v2:order:opened:{order.order_number}")])
+        elif contact_state == "opened":
+            buttons.append([InlineKeyboardButton("✅ إغلاق الطلب", callback_data=f"admin:v2:order:complete:{order.order_number}")])
     if order.whatsapp:
         digits = re.sub(r"\D", "", order.whatsapp)
         if digits.startswith("0"): digits = "963" + digits[1:]
@@ -656,7 +657,13 @@ async def _show_orders(update: Any, context: Any, page: int, filter_name: str) -
         payment_label = "✅ مدفوع" if order.status == "paid" else "🟠 بانتظار الدفع" if order.status in {"pending_payment", "pending_review"} else "❌ مرفوض"
         contact_label = {"new":"🆕 جديد","contacted":"📞 تم التواصل","opened":"🤝 مفتوح","completed":"✅ مكتمل","cancelled":"❌ ملغى"}.get(meta.contact_status if meta else "new", "🆕 جديد")
         text += f"📌 طلب {order.order_number} — إعلان {order.profile.request_number if order.profile else '?'}\n{payment_label} — {contact_label}\n📱 {order.whatsapp or 'بدون واتساب'}\n\n"
-        buttons.append([InlineKeyboardButton(f"🔎 {order.order_number}", callback_data=f"admin:v2:order:view:{order.order_number}"), InlineKeyboardButton("✅", callback_data=f"admin:v2:order:confirm:{order.order_number}"), InlineKeyboardButton("❌", callback_data=f"admin:v2:order:reject:{order.order_number}")])
+        row = [InlineKeyboardButton(f"🔎 {order.order_number}", callback_data=f"admin:v2:order:view:{order.order_number}")]
+        if order.status in {"pending_payment", "pending_review"}:
+            row.extend([
+                InlineKeyboardButton("✅", callback_data=f"admin:v2:order:confirm:{order.order_number}"),
+                InlineKeyboardButton("❌", callback_data=f"admin:v2:order:reject:{order.order_number}"),
+            ])
+        buttons.append(row)
     buttons.append([InlineKeyboardButton("🟢 المدفوعة", callback_data="admin:v2:orders:0:paid"), InlineKeyboardButton("✅ المكتملة", callback_data="admin:v2:orders:0:completed")])
     nav=[]
     if page>0: nav.append(InlineKeyboardButton("⬅️ السابق", callback_data=f"admin:v2:orders:{page-1}:{filter_name}"))
