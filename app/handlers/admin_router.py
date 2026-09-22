@@ -59,6 +59,7 @@ def _status_text(snapshot: dict[str, Any]) -> str:
 async def _dashboard(update: Any, context: Any) -> int:
     with _legacy._session(context) as session:
         _legacy.admin_v2.expire_reservations(session)
+        session.commit()
         snapshot = _legacy.metrics(session)
     await update.callback_query.edit_message_text(_status_text(snapshot), reply_markup=_home_keyboard())
     return END
