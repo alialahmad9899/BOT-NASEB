@@ -15,7 +15,7 @@ def normalize_digits(value: str) -> str:
 
 def normalize_gender(value: str) -> str:
     value = value.strip().lower()
-    if any(token in value for token in ("أنثى", "انثى", "بنت", "صبية", "عروس", "female")): return "female"
+    if any(token in value for token in ("أنثى", "انثى", "بنت", "صبية", "شابة", "فتاة", "عروس", "امرأة", "female")): return "female"
     if any(token in value for token in ("ذكر", "شاب", "شب", "عريس", "رجل", "male")): return "male"
     return value
 
