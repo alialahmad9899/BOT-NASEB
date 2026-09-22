@@ -66,3 +66,14 @@ def test_viewer_legacy_sensitive_callbacks_are_blocked():
         "admin:v2:reservation:extend:200"
     ) == 200
     assert "admin_bottom" not in inspect.getsource(safe_routing)
+
+
+def test_production_entrypoint_and_keyboards_are_inline_only():
+    import app.main as production_main
+    from app.keyboards import admin as admin_keyboard
+    from app.keyboards import client as client_keyboard
+
+    assert "admin_bottom" not in inspect.getsource(production_main)
+    assert "ReplyKeyboardMarkup" not in inspect.getsource(admin_keyboard)
+    assert "ReplyKeyboardMarkup" not in inspect.getsource(client_keyboard)
+    assert "admin_bottom" not in inspect.getsource(safe_routing)
