@@ -115,9 +115,13 @@ async def admin_callback(update: Any, context: Any) -> int:
     if role == "viewer" and (
         data.startswith("admin:delete") or data.startswith("admin:disable") or data.startswith("admin:reserve") or
         data.startswith("admin:unreserve") or data.startswith("admin:edit") or data.startswith("admin:add") or
+        data.startswith("admin:order:confirm") or data.startswith("admin:order:reject") or
+        data.startswith("admin:order:contacted") or data.startswith("admin:order:opened") or
+        data.startswith("admin:order:complete") or data.startswith("admin:order:delete") or
         data.startswith("admin:v2:delete") or data.startswith("admin:v2:archive") or data.startswith("admin:v2:reactivate") or
         data.startswith("admin:v2:reserve") or data.startswith("admin:v2:unreserve") or data.startswith("admin:v2:reservation:extend") or
-        data.startswith("admin:v2:backup:create") or data.startswith("admin:v2:backup:restore") or
+        data.startswith("admin:v2:backup:create") or data.startswith("admin:v2:backup:download") or
+        data.startswith("admin:v2:backup:restore") or
         data.startswith("admin:v2:settings:price") or data.startswith("admin:v2:settings:method") or data.startswith("admin:v2:danger")
     ):
         await update.callback_query.answer("👀 حساب المشاهدة لا يملك صلاحية التعديل أو الحذف.", show_alert=True)
