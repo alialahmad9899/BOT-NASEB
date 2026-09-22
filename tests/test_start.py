@@ -1,4 +1,10 @@
-from app.handlers.start import reset_session_for_start, start_content_for_user
+import asyncio
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
+from telegram import InlineKeyboardMarkup
+
+from app.handlers.start import reset_session_for_start, start_command, start_content_for_user
 
 
 def test_start_returns_admin_menu_for_admin_user():
@@ -33,4 +39,27 @@ def test_start_session_reset_clears_previous_flow_state():
 
     reset_session_for_start(context)
 
+    assert context.user_data == {}
+
+
+def test_admin_start_command_uses_inline_keyboard_only():
+    reply_text = AsyncMock()
+    context = SimpleNamespace(
+        user_data={"stale_flow": "search"},
+        application=SimpleNamespace(
+            bot_data={
+                "settings": SimpleNamespace(admin_user_ids=frozenset({123})),
+            }
+        ),
+    )
+    update = SimpleNamespace(
+        effective_user=SimpleNamespace(id=123),
+        effective_message=SimpleNamespace(reply_text=reply_text),
+    )
+
+    asyncio.run(start_command(update, context))
+
+    reply_text.assert_awaited_once()
+    markup = reply_text.await_args.kwargs["reply_markup"]
+    assert isinstance(markup, InlineKeyboardMarkup)
     assert context.user_data == {}
