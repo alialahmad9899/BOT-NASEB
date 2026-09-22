@@ -101,6 +101,7 @@ def _archive_with_reason(update: Any, context: Any, number: int, reason: str | N
 async def _show_reservations_plus(update: Any, context: Any, page: int) -> int:
     with _session(context) as session:
         admin_v2.expire_reservations(session)
+        session.commit()
         stmt = select(Profile, ProfileAdminMeta).join(ProfileAdminMeta, ProfileAdminMeta.profile_id == Profile.id).where(Profile.status == "reserved").order_by(desc(ProfileAdminMeta.reserved_at)).offset(page * 10).limit(11)
         rows = list(session.execute(stmt).all()); has_next = len(rows) > 10; rows = rows[:10]
     if not rows:
