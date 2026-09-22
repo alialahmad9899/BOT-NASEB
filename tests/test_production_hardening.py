@@ -2,7 +2,7 @@ import inspect
 
 from telegram import InlineKeyboardMarkup
 
-from app.handlers import admin_v2, admin_entry, safe_routing
+from app.handlers import admin_entry, admin_router_legacy, admin_v2, safe_routing
 from app.keyboards.admin import admin_main_keyboard
 
 
@@ -38,6 +38,7 @@ def test_sensitive_v2_callbacks_require_manager_or_owner():
         assert admin_v2._required_roles_for_callback(data) == {"owner", "manager"}
 
     assert admin_v2._required_roles_for_callback("admin:v2:backup:restore:3") == {"owner"}
+    assert admin_v2._required_roles_for_callback("admin:v2:publish:text:200") is None
     assert admin_v2._required_roles_for_callback("admin:v2:profile:200") is None
     assert admin_v2._required_roles_for_callback("admin:v2:orders:0:pending") is None
 
@@ -52,9 +53,15 @@ def test_viewer_legacy_sensitive_callbacks_are_blocked():
         "admin:order:delete:5001",
         "admin:v2:backup:download:last",
     ]
-    source = inspect.getsource(admin_entry._viewer_blocked)
     for callback in sensitive:
-        assert callback.split(":")[0] in source
-    legacy_source = inspect.getsource(safe_routing.admin_callback_router)
-    assert "admin_bottom" not in legacy_source
-    assert "admin_bottom" not in inspect.getsource(safe_routing.admin_text_router)
+        assert admin_entry._viewer_blocked(callback) is True
+        assert admin_router_legacy._parse_archive_reason_callback(
+            "admin:v2:archive:reason:200:تمت الزيجة"
+        ) == (200, "تمت الزيجة")
+    assert admin_router_legacy._parse_reservation_extension_callback(
+        "admin:v2:reservation:extend:200:14"
+    ) == (200, 14)
+    assert admin_router_legacy._parse_reservation_extension_request(
+        "admin:v2:reservation:extend:200"
+    ) == 200
+    assert "admin_bottom" not in inspect.getsource(safe_routing)
