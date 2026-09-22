@@ -148,7 +148,7 @@ async def admin_callback(update: Any, context: Any) -> int:
         if not _manager(update, context): await update.callback_query.answer("❌ للمديرين فقط.", show_alert=True); return END
         await update.callback_query.edit_message_text(f"📦 أرشفة الإعلان {number}\n\nاختار سبب الأرشفة:", reply_markup=_archive_keyboard(number)); return END
 
-    if re.match(r"^admin:v2:reservation:extend:\\d+:\\d+$", data):
+    if re.match(r"^admin:v2:reservation:extend:\d+:\d+$", data):
         if not _manager(update, context):
             await update.callback_query.answer("❌ هالعملية للمديرين فقط.", show_alert=True)
             return END
@@ -173,6 +173,18 @@ async def admin_callback(update: Any, context: Any) -> int:
             log_admin_action(session,int(update.effective_user.id),"reservation_extend","profile",number,{"days":days})
             session.commit()
         await update.callback_query.edit_message_text(f"✅ تم تعديل مدة حجز الإعلان {number}.", reply_markup=admin_v2._dashboard_keyboard())
+        return END
+
+    if re.match(r"^admin:v2:reservation:extend:\d+$", data):
+        if not _manager(update, context):
+            await update.callback_query.answer("❌ هالعملية للمديرين فقط.", show_alert=True)
+            return END
+        number=int(data.rsplit(":",1)[1])
+        await update.callback_query.edit_message_text("➕ كم يوم بدك تمدد الحجز؟", reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("7 أيام", callback_data=f"admin:v2:reservation:extend:{number}:7"), InlineKeyboardButton("14 يوم", callback_data=f"admin:v2:reservation:extend:{number}:14")],
+            [InlineKeyboardButton("30 يوم", callback_data=f"admin:v2:reservation:extend:{number}:30"), InlineKeyboardButton("بدون انتهاء", callback_data=f"admin:v2:reservation:extend:{number}:0")],
+            [InlineKeyboardButton("⬅️ الحجوزات", callback_data="admin:v2:reservations:0")],
+        ]))
         return END
 
     if data.startswith("admin:v2:reservations:"):
