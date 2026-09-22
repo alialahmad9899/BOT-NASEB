@@ -175,7 +175,7 @@ def _extract_residence(text: str) -> str | None:
 
 def parse_search_text(text: str) -> ProfileFilters:
     normalized = normalize_digits(text).strip().lower()
-    gender = "female" if re.search(r"بنت|صبية|عروس|حروس|انثى|أنثى|فتاة", normalized) else "male" if re.search(r"شاب|شب|عريس|ذكر|رجل", normalized) else None
+    gender = "female" if re.search(r"بنت|صبية|شابة|عروس|حروس|انثى|أنثى|فتاة|امرأة", normalized) else "male" if re.search(r"شاب|شب|عريس|ذكر|رجل", normalized) else None
     residence = _extract_residence(normalized)
     marital = None
     for _, canonical in MARITAL_ALIASES.items():
@@ -228,7 +228,7 @@ def _mentions_target_age(text: str, age: int) -> bool:
 def filters_from_ai(extraction: SearchFilterExtraction, raw_text: str | None = None) -> ProfileFilters:
     source = normalize_digits(raw_text or "").lower()
     gender = extraction.gender if extraction.gender in {"male", "female"} else None
-    if source and gender == "female" and not re.search(r"بنت|صبية|عروس|حروس|انثى|أنثى|فتاة", source):
+    if source and gender == "female" and not re.search(r"بنت|صبية|شابة|عروس|حروس|انثى|أنثى|فتاة|امرأة", source):
         gender = None
     if source and gender == "male" and not re.search(r"شاب|شب|عريس|ذكر|رجل", source):
         gender = None
