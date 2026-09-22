@@ -1,4 +1,4 @@
-"""Admin keyboard builders (legacy-compatible + persistent bottom navigation)."""
+"""Admin keyboard builders. All visible navigation uses inline buttons only."""
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
