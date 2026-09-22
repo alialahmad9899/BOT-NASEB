@@ -107,14 +107,8 @@ def _remember_admin(context: Any, update: Any) -> None:
 
 
 def _dashboard_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("➕ إضافة إعلان", callback_data="admin:v2:add")],
-        [InlineKeyboardButton("🔎 البحث الذكي", callback_data="admin:v2:search"), InlineKeyboardButton("📋 إدارة الإعلانات", callback_data="admin:v2:profiles:0:all")],
-        [InlineKeyboardButton("💳 طلبات التواصل", callback_data="admin:v2:orders:0:pending"), InlineKeyboardButton("🔒 الحجوزات", callback_data="admin:v2:reservations:0")],
-        [InlineKeyboardButton("🗃️ الأرشيف", callback_data="admin:v2:profiles:0:archived"), InlineKeyboardButton("⚠️ المعطلة", callback_data="admin:v2:profiles:0:inactive")],
-        [InlineKeyboardButton("📊 التقارير", callback_data="admin:v2:reports"), InlineKeyboardButton("🧾 سجل العمليات", callback_data="admin:v2:audit")],
-        [InlineKeyboardButton("💾 النسخ الاحتياطية", callback_data="admin:v2:backups"), InlineKeyboardButton("⚙️ الإعدادات", callback_data="admin:v2:settings")],
-    ])
+    from app.keyboards.admin import admin_main_keyboard
+    return admin_main_keyboard()
 
 
 def _back_keyboard() -> InlineKeyboardMarkup:
@@ -695,32 +689,82 @@ async def _view_order(update: Any, context: Any, number: int) -> int:
 
 
 async def _order_transition(update: Any, context: Any, number: int, transition: str) -> int:
+    if not _require_role(update, context, {"owner", "manager"}):
+        await update.callback_query.answer("❌ هالعملية للمديرين فقط.", show_alert=True)
+        return END
     with _session(context) as session:
         order = OrderRepository(session).get(number)
         if order is None:
-            await update.callback_query.edit_message_text("❌ ما لقينا الطلب.", reply_markup=_dashboard_keyboard()); return END
+            await update.callback_query.edit_message_text("❌ ما لقينا الطلب.", reply_markup=_dashboard_keyboard())
+            return END
         meta = get_order_meta(session, order.id, create=True)
         now = datetime.now(timezone.utc)
-        if transition == "confirm": meta.payment_status = "paid"; order.status = "paid"
-        elif transition == "reject": meta.payment_status = "rejected"; meta.contact_status = "cancelled"; order.status = "rejected"; order.notes = "إلغاء يدوي من الأدمن"
-        elif transition == "contacted": meta.contact_status = "contacted"; meta.contacted_at = now
-        elif transition == "opened": meta.contact_status = "opened"
-        elif transition == "complete": meta.contact_status = "completed"; meta.completed_at = now
+        allowed = True
+
+        if transition == "confirm":
+            if meta.payment_status == "paid" or order.status == "paid":
+                message = f"✅ الدفع لطلب التواصل رقم {number} مؤكد مسبقاً."
+            elif meta.payment_status == "pending" and order.status in {"pending_payment", "pending_review"}:
+                meta.payment_status = "paid"
+                order.status = "paid"
+                message = f"✅ تم تأكيد الدفع لطلب التواصل رقم {number}."
+            else:
+                allowed = False
+                message = "❌ ما فينا نؤكد الدفع بعد معالجة الطلب."
+        elif transition == "reject":
+            if meta.payment_status == "pending" and order.status in {"pending_payment", "pending_review"}:
+                meta.payment_status = "rejected"
+                meta.contact_status = "cancelled"
+                order.status = "rejected"
+                order.notes = "إلغاء يدوي من الأدمن"
+                message = f"❌ تم إلغاء طلب التواصل رقم {number}."
+            else:
+                allowed = False
+                message = "❌ ما فينا نرفض طلب مدفوع أو معالج مسبقاً."
+        elif transition == "contacted":
+            if meta.payment_status != "paid":
+                allowed = False
+                message = "❌ لازم يتأكد الدفع أولاً قبل تسجيل التواصل."
+            elif meta.contact_status != "new":
+                allowed = False
+                message = "❌ حالة التواصل تغيرت مسبقاً."
+            else:
+                meta.contact_status = "contacted"
+                meta.contacted_at = now
+                message = f"📞 تم تسجيل التواصل مع العميل لطلب {number}."
+        elif transition == "opened":
+            if meta.payment_status != "paid" or meta.contact_status != "contacted":
+                allowed = False
+                message = "❌ لازم يكون الدفع مؤكد والتواصل مسجل قبل فتح الطلب."
+            else:
+                meta.contact_status = "opened"
+                message = f"🤝 تم فتح التواصل لطلب {number}."
+        elif transition == "complete":
+            if meta.contact_status != "opened":
+                allowed = False
+                message = "❌ لازم يكون الطلب بحالة «مفتوح» قبل إغلاقه."
+            else:
+                meta.contact_status = "completed"
+                meta.completed_at = now
+                message = f"✅ تم إغلاق طلب التواصل رقم {number} كمكتمل."
+        else:
+            allowed = False
+            message = "❌ عملية غير معروفة."
+
+        if not allowed:
+            await update.callback_query.edit_message_text(message, reply_markup=_dashboard_keyboard())
+            return END
+
         log_admin_action(session, int(update.effective_user.id), f"order_{transition}", "order", number)
         user_id = order.user_telegram_id
         session.commit()
-    messages = {
-        "confirm": f"✅ تم تأكيد الدفع لطلب التواصل رقم {number}.",
-        "reject": f"❌ تم إلغاء طلب التواصل رقم {number}.",
-        "contacted": f"📞 تم تسجيل التواصل مع العميل لطلب {number}.",
-        "opened": f"🤝 تم فتح التواصل لطلب {number}.",
-        "complete": f"✅ تم إغلاق طلب التواصل رقم {number} كمكتمل.",
-    }
+
     try:
-        await context.application.bot.send_message(user_id, messages[transition])
+        await context.application.bot.send_message(user_id, message)
     except Exception:
         pass
-    await update.callback_query.edit_message_text(messages[transition], reply_markup=_dashboard_keyboard()); return END
+    await update.callback_query.edit_message_text(message, reply_markup=_dashboard_keyboard())
+    return END
 
 
 async def _delete_profile(update: Any, context: Any, number: int) -> int:
@@ -751,6 +795,17 @@ async def _delete_profile_confirm(update: Any, context: Any, text: str) -> int:
 async def _delete_order(update: Any, context: Any, number: int) -> int:
     if not _require_role(update, context, {"owner", "manager"}):
         await update.callback_query.answer("❌ حذف الطلبات للمديرين فقط.", show_alert=True); return END
+    with _session(context) as session:
+        order = OrderRepository(session).get(number)
+    if order is None:
+        await update.callback_query.edit_message_text("❌ ما لقينا طلب التواصل.", reply_markup=_dashboard_keyboard())
+        return END
+    if order.status not in {"pending_payment", "pending_review"}:
+        await update.callback_query.edit_message_text(
+            "⚠️ الطلب تمت معالجته، لذلك ما بينحذف من مسار الطلبات المعلّقة.",
+            reply_markup=_dashboard_keyboard(),
+        )
+        return END
     context.user_data["v2_flow"] = "delete_order_confirm"; context.user_data["v2_delete_order_number"] = number
     await update.callback_query.edit_message_text(f"⚠️ رح ينحذف طلب التواصل {number} نهائياً.\n\nاكتب **حذف الطلب** للتأكيد.", parse_mode="Markdown", reply_markup=_back_keyboard()); return ADMIN_V2_INPUT
 
@@ -760,11 +815,28 @@ async def _delete_order_confirm(update: Any, context: Any, text: str) -> int:
         await update.effective_message.reply_text("❌ اكتب بالضبط: حذف الطلب", reply_markup=_back_keyboard()); return ADMIN_V2_INPUT
     number = int(context.user_data["v2_delete_order_number"])
     with _session(context) as session:
+        order = OrderRepository(session).get(number)
+        if order is None or order.status not in {"pending_payment", "pending_review"}:
+            context.user_data.clear()
+            await update.effective_message.reply_text(
+                "⚠️ ما انحذف الطلب لأنه تمت معالجته أو لم يعد بانتظار الدفع.",
+                reply_markup=_dashboard_keyboard(),
+            )
+            return END
         create_backup(session, int(update.effective_user.id), f"قبل حذف طلب التواصل {number}")
         deleted = OrderRepository(session).delete_order(number)
-        log_admin_action(session, int(update.effective_user.id), "order_delete", "order", number, {"deleted": deleted})
+        if not deleted:
+            context.user_data.clear()
+            await update.effective_message.reply_text(
+                "⚠️ ما قدرنا نحذف الطلب. ربما تمت معالجته بنفس الوقت.",
+                reply_markup=_dashboard_keyboard(),
+            )
+            return END
+        log_admin_action(session, int(update.effective_user.id), "order_delete", "order", number, {"deleted": True})
         session.commit()
-    context.user_data.clear(); await update.effective_message.reply_text("✅ تم حذف الطلب بعد إنشاء نسخة احتياطية.", reply_markup=_dashboard_keyboard()); return END
+    context.user_data.clear()
+    await update.effective_message.reply_text("✅ تم حذف الطلب بعد إنشاء نسخة احتياطية.", reply_markup=_dashboard_keyboard())
+    return END
 
 
 async def _show_reports(update: Any, context: Any) -> int:
@@ -901,8 +973,51 @@ async def _settings_input(update: Any, context: Any, text: str) -> int:
     return END
 
 
+def _required_roles_for_callback(data: str) -> set[str] | None:
+    """Return the minimum role set for sensitive callbacks."""
+    owner_only = ("admin:v2:backup:restore",)
+    manager_prefixes = (
+        "admin:v2:add",
+        "admin:v2:edit",
+        "admin:v2:archive",
+        "admin:v2:reactivate",
+        "admin:v2:reserve",
+        "admin:v2:unreserve",
+        "admin:v2:reservation:extend",
+        "admin:v2:publish:",
+        "admin:v2:unpublish:",
+        "admin:v2:delete",
+        "admin:v2:order:confirm:",
+        "admin:v2:order:reject:",
+        "admin:v2:order:contacted:",
+        "admin:v2:order:opened:",
+        "admin:v2:order:complete:",
+        "admin:v2:order:delete:",
+        "admin:v2:backup:create",
+        "admin:v2:backup:download:last",
+        "admin:v2:danger:selected",
+        "admin:v2:danger:all",
+        "admin:v2:settings:price",
+        "admin:v2:settings:method",
+    )
+    if any(data.startswith(prefix) for prefix in owner_only):
+        return {"owner"}
+    if any(data.startswith(prefix) for prefix in manager_prefixes):
+        return {"owner", "manager"}
+    return None
+
+
 async def admin_callback(update: Any, context: Any) -> int:
     _remember_admin(context, update)
+    role = _role(context, int(update.effective_user.id)) if update.effective_user else None
+    if role is None:
+        await update.callback_query.answer("❌ ما عندك صلاحية لهالعملية.", show_alert=True)
+        return END
+    required = _required_roles_for_callback(update.callback_query.data or "")
+    if required is not None and role not in required:
+        message = "❌ استعادة النسخ للمالك فقط." if required == {"owner"} else "❌ هالعملية للمديرين فقط."
+        await update.callback_query.answer(message, show_alert=True)
+        return END
     if not _is_admin(update, context):
         query = update.callback_query
         await query.answer("❌ ما عندك صلاحية لهالعملية.", show_alert=True); return END
@@ -1005,16 +1120,59 @@ async def admin_callback(update: Any, context: Any) -> int:
         if data.startswith("admin:v2:publish:") and not data.startswith("admin:v2:publish:text:"):
             number=int(data.rsplit(":",1)[1])
             with _session(context) as session:
-                profile=ProfileRepository(session).get(number)
-                if profile is None: await query.edit_message_text("❌ ما لقينا الإعلان.", reply_markup=_dashboard_keyboard()); return END
-                meta=get_profile_meta(session,profile.id,True); meta.publication_status="published"; meta.published_at=datetime.now(timezone.utc); log_admin_action(session,int(update.effective_user.id),"profile_publish","profile",number); session.commit()
-            await query.edit_message_text("📤 تم اعتماد الإعلان كمنشور.", reply_markup=_dashboard_keyboard()); return END
+                profile=ProfileRepository(session).get_with_contact(number)
+                if profile is None:
+                    await query.edit_message_text("❌ ما لقينا الإعلان.", reply_markup=_dashboard_keyboard())
+                    return END
+                if profile.get("status") == "inactive":
+                    await query.edit_message_text("❌ الإعلان معطّل/مؤرشف، وما فينا ننشره قبل إعادة تفعيله.", reply_markup=_dashboard_keyboard())
+                    return END
+                draft=ProfileDraft(
+                    {k: profile.get(k) for k in ("gender","name","age","residence","marital_status","children_count","occupation","education","height","weight","appearance","partner_requirements","photo_file_id")},
+                    {k: profile.get(k) for k in ("phone","telegram_username","whatsapp")},
+                )
+                quality=score_profile(draft)
+                if not quality.ready:
+                    missing="، ".join(quality.missing_fields) if quality.missing_fields else "بيانات أساسية ناقصة"
+                    await query.edit_message_text(
+                        "⚠️ ما فينا ننشر الإعلان حالياً.\n\n"
+                        f"النواقص: {missing}\n\n"
+                        "كمّل البيانات الأساسية أولاً، وبعدها ارجع لخيار النشر.",
+                        reply_markup=InlineKeyboardMarkup([
+                            [InlineKeyboardButton("✏️ تعديل الإعلان", callback_data=f"admin:v2:edit:{number}")],
+                            [InlineKeyboardButton("⬅️ الإعلان", callback_data=f"admin:v2:profile:{number}")],
+                            [InlineKeyboardButton("⬅️ لوحة الأدمن", callback_data="admin:v2:dashboard")],
+                        ]),
+                    )
+                    return END
+                meta=get_profile_meta(session,profile["id"],True)
+                meta.publication_status="published"
+                meta.published_at=datetime.now(timezone.utc)
+                meta.quality_score=quality.score
+                log_admin_action(session,int(update.effective_user.id),"profile_publish","profile",number,{"quality":quality.score})
+                session.commit()
+            await query.edit_message_text("📤 تم اعتماد الإعلان كمنشور.", reply_markup=_dashboard_keyboard())
+            return END
         if data.startswith("admin:v2:unpublish:"):
             number=int(data.rsplit(":",1)[1])
             with _session(context) as session:
-                profile=ProfileRepository(session).get(number); meta=get_profile_meta(session,profile.id,True) if profile else None
-                if meta: meta.publication_status="unpublished"; log_admin_action(session,int(update.effective_user.id),"profile_unpublish","profile",number); session.commit()
-            await query.edit_message_text("↩️ تم إلغاء حالة النشر.", reply_markup=_dashboard_keyboard()); return END
+                profile=ProfileRepository(session).get_with_contact(number)
+                if profile is None:
+                    await query.edit_message_text("❌ ما لقينا الإعلان.", reply_markup=_dashboard_keyboard())
+                    return END
+                draft=ProfileDraft(
+                    {k: profile.get(k) for k in ("gender","name","age","residence","marital_status","children_count","occupation","education","height","weight","appearance","partner_requirements","photo_file_id")},
+                    {k: profile.get(k) for k in ("phone","telegram_username","whatsapp")},
+                )
+                quality=score_profile(draft)
+                meta=get_profile_meta(session,profile["id"],True)
+                meta.publication_status="ready" if quality.ready and profile.get("status") != "inactive" else "review"
+                meta.published_at=None
+                log_admin_action(session,int(update.effective_user.id),"profile_unpublish","profile",number)
+                session.commit()
+            await query.edit_message_text("↩️ تم إلغاء النشر، والإعلان رجع لحالة المراجعة/الجاهزية حسب بياناته.", reply_markup=_dashboard_keyboard())
+            return END
+
         if data.startswith("admin:v2:delete:"): return await _delete_profile(update, context, int(data.rsplit(":",1)[1]))
 
     # Protect legacy destructive shortcuts and upgrade old order/profile controls.
