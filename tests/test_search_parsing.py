@@ -60,3 +60,11 @@ def test_ai_filter_sanitizer_keeps_explicit_target_age():
     assert result.age_min == 22
     assert result.age_max == 27
     assert result.residence == "دمشق"
+
+
+def test_search_parser_treats_shabba_as_female_not_male():
+    result = parse_search_text("بدي شابة من دمشق بين 22 و28")
+    assert result.gender == "female"
+    assert result.residence == "دمشق"
+    assert result.age_min == 22
+    assert result.age_max == 28
