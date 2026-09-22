@@ -1000,6 +1000,8 @@ def _required_roles_for_callback(data: str) -> set[str] | None:
         "admin:v2:settings:price",
         "admin:v2:settings:method",
     )
+    if data.startswith("admin:v2:publish:text:"):
+        return None
     if any(data.startswith(prefix) for prefix in owner_only):
         return {"owner"}
     if any(data.startswith(prefix) for prefix in manager_prefixes):
