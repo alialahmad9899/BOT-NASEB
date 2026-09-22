@@ -1,4 +1,8 @@
-"""Administrative Telegram flows with defense-in-depth authorization."""
+"""Legacy-compatible administrative flows with defense-in-depth authorization.
+
+New UI actions are exposed through the Admin V2 inline dashboard; these legacy
+routes remain only for compatibility with older Telegram messages.
+"""
 
 from __future__ import annotations
 
