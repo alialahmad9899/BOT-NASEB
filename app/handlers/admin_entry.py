@@ -55,6 +55,7 @@ def _viewer_blocked(data: str) -> bool:
         "admin:v2:unreserve", "admin:v2:reservation:extend", "admin:v2:delete", "admin:v2:publish",
         "admin:v2:unpublish", "admin:v2:order:confirm", "admin:v2:order:reject", "admin:v2:order:contacted",
         "admin:v2:order:opened", "admin:v2:order:complete", "admin:v2:order:delete", "admin:v2:backup:create",
+        "admin:v2:backup:download", "admin:order:confirm", "admin:order:reject", "admin:order:contacted", "admin:order:opened", "admin:order:complete", "admin:order:delete",
         "admin:v2:backup:restore", "admin:v2:settings:price", "admin:v2:settings:method", "admin:v2:danger",
         "admin:orders:delete:pending",
     )
