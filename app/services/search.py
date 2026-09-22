@@ -119,10 +119,19 @@ def _extract_children_filter(text: str) -> tuple[int | None, int | None]:
     for phrase, count in (("ولد واحد", 1), ("طفل واحد", 1), ("ولدين", 2), ("طفلين", 2), ("ثلاثة أولاد", 3), ("ثلاث اولاد", 3)):
         if phrase in normalized:
             return count, count
-    match = re.search(r"(?:عندها|عنده|عندو|عندي|لديها|لديه)\s*(\d{1,2})\s*(?:ولاد|اولاد|أولاد|أطفال|اطفال)", normalized)
+    match = re.search(
+        r"(?:عندها|عنده|عندو|عندي|لديها|لديه|معها|معه)\s*(\d{1,2})\s*(?:ولاد|اولاد|أولاد|أطفال|اطفال)",
+        normalized,
+    )
     if match:
         count = int(match.group(1))
         return count, count
+
+    match = re.search(r"(?<!\d)(\d{1,2})\s*(?:ولاد|اولاد|أولاد|أطفال|اطفال)", normalized)
+    if match:
+        count = int(match.group(1))
+        return count, count
+
     return None, None
 
 
@@ -135,6 +144,29 @@ def _extract_education(text: str) -> str | None:
 
 def _extract_residence(text: str) -> str | None:
     normalized = normalize_digits(text).lower()
+
+    # When the user mentions both their own residence and the requested
+    # person's residence, prefer the location appearing after the search intent.
+    intent_spans = [m.end() for m in re.finditer(
+        r"(?:بدي|بديلي|بدّي|دورولي|دورلي|اعطيني|هات|ورجيني)\b", normalized
+    )]
+    if intent_spans:
+        for intent_end in reversed(intent_spans):
+            window = normalized[intent_end:intent_end + 120]
+            for key in sorted(RESIDENCE_ALIASES, key=len, reverse=True):
+                match = re.search(
+                    rf"(?<![\u0600-\u06ff]){re.escape(key)}(?![\u0600-\u06ff])",
+                    window,
+                )
+                if match and re.search(r"(?:من|ب|في|بمنطقة|بـ)\s*$", window[:match.start()] + " "):
+                    return RESIDENCE_ALIASES[key]
+            for key in sorted(RESIDENCE_ALIASES, key=len, reverse=True):
+                if re.search(
+                    rf"(?<![\u0600-\u06ff]){re.escape(key)}(?![\u0600-\u06ff])",
+                    window,
+                ):
+                    return RESIDENCE_ALIASES[key]
+
     for key in sorted(RESIDENCE_ALIASES, key=len, reverse=True):
         if re.search(rf"(?<![\u0600-\u06ff]){re.escape(key)}(?![\u0600-\u06ff])", normalized):
             return RESIDENCE_ALIASES[key]
