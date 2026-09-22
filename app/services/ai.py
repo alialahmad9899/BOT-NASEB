@@ -133,7 +133,7 @@ def _normalize_name(value: str | None) -> str | None:
     lowered = name.lower()
     if name in {"بنت", "شاب", "عروس", "عريس", "فتاة", "رجل", "امرأة"}:
         return None
-    if any(fragment in lowered for fragment in ("بنت من", "شاب من", "عروس من", "عريس من", "فتاة من", "رجل من", "امرأة من")):
+    if any(fragment in lowered for fragment in ("بنت من", "شاب من", "شابة من", "عروس من", "عريس من", "فتاة من", "رجل من", "امرأة من")):
         return None
     return name
 
@@ -220,7 +220,7 @@ def basic_profile_extraction(raw_text: str, photo_file_id: str | None = None) ->
     normalized = normalize_digits(raw_text.replace("،", " ")).strip()
     lower = normalized.lower()
     lines = [line.strip() for line in normalized.splitlines() if line.strip()]
-    gender = "female" if re.search(r"بنت|صبية|فتاة|عروس|أنثى|انثى", lower) else "male" if re.search(r"شب|شاب|رجل|عريس|ذكر", lower) else None
+    gender = "female" if re.search(r"بنت|صبية|شابة|فتاة|عروس|أنثى|انثى|امرأة", lower) else "male" if re.search(r"شب|شاب|رجل|عريس|ذكر", lower) else None
     age = None
     for pattern in (r"(?:عمري|عمرها|عمره|عمرا|العمر|عمر|بعمر|سنها|سنه)\s*[:=-]?\s*(\d{1,3})", r"(?<!\d)(\d{2,3})\s*(?:سنة|سنين|عام)\b"):
         match = re.search(pattern, normalized, re.I)
