@@ -1,23 +1,7 @@
 """Admin keyboard builders (legacy-compatible + persistent bottom navigation)."""
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
-
-ADMIN_BOTTOM_BUTTONS = (
-    "➕ إضافة إعلان",
-    "🔎 البحث الذكي",
-    "📋 إدارة الإعلانات",
-    "💳 طلبات التواصل",
-    "🔒 الحجوزات",
-    "🗃️ الأرشيف",
-    "⚠️ المعطلة",
-    "📊 التقارير",
-    "🧾 سجل العمليات",
-    "💾 النسخ الاحتياطية",
-    "⚙️ الإعدادات",
-    "🏠 الرئيسية",
-    "⬅️ رجوع للوحة الأدمن",
-)
 
 
 def admin_main_keyboard() -> InlineKeyboardMarkup:
@@ -40,23 +24,6 @@ def admin_main_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("⚙️ الإعدادات", callback_data="admin:v2:section:settings"),
         ],
     ])
-
-
-def admin_bottom_keyboard() -> ReplyKeyboardMarkup:
-    """Persistent admin navigation shown in Telegram's bottom keyboard area."""
-    return ReplyKeyboardMarkup(
-        [
-            ["➕ إضافة إعلان", "🔎 البحث الذكي"],
-            ["📋 إدارة الإعلانات", "💳 طلبات التواصل"],
-            ["🔒 الحجوزات", "🗃️ الأرشيف", "⚠️ المعطلة"],
-            ["📊 التقارير", "🧾 سجل العمليات"],
-            ["💾 النسخ الاحتياطية", "⚙️ الإعدادات"],
-            ["🏠 الرئيسية", "⬅️ رجوع للوحة الأدمن"],
-        ],
-        resize_keyboard=True,
-        is_persistent=True,
-        input_field_placeholder="اختر من لوحة الأدمن بالأسفل",
-    )
 
 
 def back_to_admin_keyboard() -> InlineKeyboardMarkup:
