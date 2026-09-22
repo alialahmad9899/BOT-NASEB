@@ -49,6 +49,25 @@ def _owner(update: Any, context: Any) -> bool:
     return bool(user and _role(context, int(user.id)) == "owner")
 
 
+def _parse_archive_reason_callback(data: str) -> tuple[int, str | None] | None:
+    match = re.fullmatch(r"admin:v2:archive:reason:(\\d+):(.*)", data)
+    if not match:
+        return None
+    return int(match.group(1)), match.group(2) or None
+
+
+def _parse_reservation_extension_callback(data: str) -> tuple[int, int] | None:
+    match = re.fullmatch(r"admin:v2:reservation:extend:(\\d+):(\\d+)", data)
+    if not match:
+        return None
+    return int(match.group(1)), int(match.group(2))
+
+
+def _parse_reservation_extension_request(data: str) -> int | None:
+    match = re.fullmatch(r"admin:v2:reservation:extend:(\\d+)", data)
+    return int(match.group(1)) if match else None
+
+
 def _archive_keyboard(number: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("💍 تمت الزيجة", callback_data=f"admin:v2:archive:reason:{number}:تمت الزيجة")],
@@ -129,14 +148,9 @@ async def admin_callback(update: Any, context: Any) -> int:
 
     if data.startswith("admin:v2:archive:"):
         number = int(data.rsplit(":", 1)[1]) if data.count(":") == 3 else None
-        if data.startswith("admin:v2:archive:reason:"):
-            parts=data.split(":",5)
-            try:
-                number=int(parts[4])
-            except (IndexError, ValueError):
-                await update.callback_query.answer("❌ رقم الإعلان غير صالح.", show_alert=True)
-                return END
-            reason=parts[5] if len(parts)>5 else None
+        parsed_archive = _parse_archive_reason_callback(data)
+        if parsed_archive is not None:
+            number, reason = parsed_archive
             await update.callback_query.answer()
             _archive_with_reason(update, context, number, reason)
             await update.callback_query.edit_message_text(f"📦 تمت أرشفة الإعلان {number}.\n\n💬 السبب: {reason or 'بدون سبب'}\n🔒 البيانات بقيت محفوظة.", reply_markup=admin_v2._dashboard_keyboard())
@@ -148,13 +162,12 @@ async def admin_callback(update: Any, context: Any) -> int:
         if not _manager(update, context): await update.callback_query.answer("❌ للمديرين فقط.", show_alert=True); return END
         await update.callback_query.edit_message_text(f"📦 أرشفة الإعلان {number}\n\nاختار سبب الأرشفة:", reply_markup=_archive_keyboard(number)); return END
 
-    if re.match(r"^admin:v2:reservation:extend:\d+:\d+$", data):
+    parsed_extension = _parse_reservation_extension_callback(data)
+    if parsed_extension is not None:
         if not _manager(update, context):
             await update.callback_query.answer("❌ هالعملية للمديرين فقط.", show_alert=True)
             return END
-        _,_,_,_,number_str,days_str=data.split(":")
-        number=int(number_str)
-        days=int(days_str)
+        number, days = parsed_extension
         if days not in {0,7,14,30}:
             await update.callback_query.answer("❌ مدة الحجز غير صالحة.", show_alert=True)
             return END
@@ -175,14 +188,14 @@ async def admin_callback(update: Any, context: Any) -> int:
         await update.callback_query.edit_message_text(f"✅ تم تعديل مدة حجز الإعلان {number}.", reply_markup=admin_v2._dashboard_keyboard())
         return END
 
-    if re.match(r"^admin:v2:reservation:extend:\d+$", data):
+    request_number = _parse_reservation_extension_request(data)
+    if request_number is not None:
         if not _manager(update, context):
             await update.callback_query.answer("❌ هالعملية للمديرين فقط.", show_alert=True)
             return END
-        number=int(data.rsplit(":",1)[1])
         await update.callback_query.edit_message_text("➕ كم يوم بدك تمدد الحجز؟", reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("7 أيام", callback_data=f"admin:v2:reservation:extend:{number}:7"), InlineKeyboardButton("14 يوم", callback_data=f"admin:v2:reservation:extend:{number}:14")],
-            [InlineKeyboardButton("30 يوم", callback_data=f"admin:v2:reservation:extend:{number}:30"), InlineKeyboardButton("بدون انتهاء", callback_data=f"admin:v2:reservation:extend:{number}:0")],
+            [InlineKeyboardButton("7 أيام", callback_data=f"admin:v2:reservation:extend:{request_number}:7"), InlineKeyboardButton("14 يوم", callback_data=f"admin:v2:reservation:extend:{request_number}:14")],
+            [InlineKeyboardButton("30 يوم", callback_data=f"admin:v2:reservation:extend:{request_number}:30"), InlineKeyboardButton("بدون انتهاء", callback_data=f"admin:v2:reservation:extend:{request_number}:0")],
             [InlineKeyboardButton("⬅️ الحجوزات", callback_data="admin:v2:reservations:0")],
         ]))
         return END
