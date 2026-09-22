@@ -157,9 +157,9 @@ def _broaden_filters(filters: ProfileFilters) -> ProfileFilters:
 
 def _order_status_label(status: str | None) -> str:
     return {
-        "pending_payment": "🟠 بانتظار التواصل",
+        "pending_payment": "🟠 بانتظار متابعة الدفع",
         "pending_review": "🟠 قيد المتابعة",
-        "paid": "✅ مكتمل",
+        "paid": "✅ تم تأكيد الدفع",
         "rejected": "❌ مرفوض",
     }.get(status or "", "🟠 قيد المتابعة")
 
