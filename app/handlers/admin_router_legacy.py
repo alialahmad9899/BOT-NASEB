@@ -50,21 +50,21 @@ def _owner(update: Any, context: Any) -> bool:
 
 
 def _parse_archive_reason_callback(data: str) -> tuple[int, str | None] | None:
-    match = re.fullmatch(r"admin:v2:archive:reason:(\\d+):(.*)", data)
+    match = re.fullmatch(r"admin:v2:archive:reason:(\d+):(.*)", data)
     if not match:
         return None
     return int(match.group(1)), match.group(2) or None
 
 
 def _parse_reservation_extension_callback(data: str) -> tuple[int, int] | None:
-    match = re.fullmatch(r"admin:v2:reservation:extend:(\\d+):(\\d+)", data)
+    match = re.fullmatch(r"admin:v2:reservation:extend:(\d+):(\d+)", data)
     if not match:
         return None
     return int(match.group(1)), int(match.group(2))
 
 
 def _parse_reservation_extension_request(data: str) -> int | None:
-    match = re.fullmatch(r"admin:v2:reservation:extend:(\\d+)", data)
+    match = re.fullmatch(r"admin:v2:reservation:extend:(\d+)", data)
     return int(match.group(1)) if match else None
 
 
