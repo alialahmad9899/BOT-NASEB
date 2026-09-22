@@ -29,16 +29,8 @@ _show_reservations_plus = _legacy._show_reservations_plus
 
 
 def _home_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔎 الإعلانات والبحث", callback_data="admin:v2:section:ads")],
-        [InlineKeyboardButton("➕ إضافة إعلان", callback_data="admin:v2:add")],
-        [InlineKeyboardButton("💳 الطلبات والتواصل", callback_data="admin:v2:section:orders")],
-        [InlineKeyboardButton("🔒 الحجوزات", callback_data="admin:v2:section:reservations")],
-        [InlineKeyboardButton("📣 النشر والمحتوى", callback_data="admin:v2:section:publishing")],
-        [InlineKeyboardButton("📊 التقارير والمتابعة", callback_data="admin:v2:section:reports")],
-        [InlineKeyboardButton("🛡️ الأمان والنسخ", callback_data="admin:v2:section:security")],
-        [InlineKeyboardButton("⚙️ الإعدادات", callback_data="admin:v2:section:settings")],
-    ])
+    from app.keyboards.admin import admin_main_keyboard
+    return admin_main_keyboard()
 
 
 def _back() -> InlineKeyboardMarkup:
