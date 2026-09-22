@@ -6,7 +6,6 @@ from typing import Any
 
 from app.handlers import admin_v2
 from app.handlers.admin_entry import admin_callback, admin_text
-from app.handlers.admin_bottom import admin_bottom_text_router
 from app.handlers.client import client_callback
 from app.handlers.safe_order_views import (
     admin_order_view,
@@ -65,9 +64,6 @@ async def admin_callback_router(update: Any, context: Any) -> int:
 
 
 async def admin_text_router(update: Any, context: Any) -> int:
-    bottom_state = await admin_bottom_text_router(update, context)
-    if bottom_state is not None:
-        return bottom_state
     if context.user_data.get("v2_flow") == "search_input":
         return await admin_search_text(update, context)
     return await admin_text(update, context)
