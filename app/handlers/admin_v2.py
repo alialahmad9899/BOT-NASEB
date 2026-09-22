@@ -238,6 +238,7 @@ def _order_actions(order: Order, payment_state: str, contact_state: str) -> Inli
 async def _dashboard(update: Any, context: Any) -> int:
     with _session(context) as session:
         expire_reservations(session)
+        session.commit()
         snapshot = metrics(session)
     await update.callback_query.edit_message_text(_dashboard_text(snapshot), reply_markup=_dashboard_keyboard())
     _audit(context, "dashboard_view")
@@ -550,6 +551,7 @@ async def _run_search(update: Any, context: Any, page: int) -> int:
 async def _show_reservations(update: Any, context: Any, page: int) -> int:
     with _session(context) as session:
         expire_reservations(session)
+        session.commit()
         stmt = select(Profile, ProfileAdminMeta).join(ProfileAdminMeta, ProfileAdminMeta.profile_id == Profile.id).where(Profile.status == "reserved").order_by(desc(ProfileAdminMeta.reserved_at)).offset(page*10).limit(11)
         rows = list(session.execute(stmt).all())
         has_next = len(rows) > 10
