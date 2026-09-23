@@ -392,10 +392,14 @@ DEFAULT_MANAGER_IDS = frozenset({1923538306, 7824433847})
 def _env_admin_role_map(settings: Any) -> dict[str, str]:
     access = getattr(settings, "admin_access", None)
     if access is None or not hasattr(access, "owner_ids"):
-        roles = {str(uid): AdminRole.OWNER.value for uid in sorted(getattr(settings, "admin_user_ids", ()))}
-        roles.setdefault(str(PRIMARY_ADMIN_ID), AdminRole.OWNER.value)
+        legacy_ids = set(getattr(settings, "admin_user_ids", ()))
+        roles = {
+            str(uid): AdminRole.OWNER.value
+            for uid in sorted(legacy_ids - set(DEFAULT_MANAGER_IDS))
+        }
+        roles[str(PRIMARY_ADMIN_ID)] = AdminRole.OWNER.value
         for uid in DEFAULT_MANAGER_IDS:
-            roles.setdefault(str(uid), AdminRole.MANAGER.value)
+            roles[str(uid)] = AdminRole.MANAGER.value
         return roles
 
     roles: dict[str, str] = {}
