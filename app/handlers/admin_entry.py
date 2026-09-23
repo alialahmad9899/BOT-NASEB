@@ -452,37 +452,84 @@ async def _send_staff_notification(update: Any, context: Any, message: str) -> i
         return ADMIN_V2_INPUT
 
     settings = context.application.bot_data["settings"]
+    actor_id = int(update.effective_user.id)
     with _session(context) as session:
         roles = get_admin_roles(session, settings)
-        recipients = sorted(uid for uid in roles if uid != int(update.effective_user.id))
-        log_admin_action(
-            session,
-            int(update.effective_user.id),
-            "admin_staff_broadcast",
-            "admin",
-            None,
-            {"recipients": recipients},
+        # Staff broadcasts target employees only. View-only accounts are not
+        # part of the employee notification list.
+        recipients = sorted(
+            uid for uid, role in roles.items()
+            if role == "manager" and uid != actor_id
         )
-        session.commit()
 
-    delivered = 0
-    failed = 0
+    delivered_ids: list[int] = []
+    failed_ids: list[int] = []
     for admin_id in recipients:
         try:
             await context.application.bot.send_message(
                 admin_id,
                 "📢 إشعار من المالك الرئيسي في «لقاء ونصيب»\n\n" + message,
             )
-            delivered += 1
+            delivered_ids.append(admin_id)
         except Exception:
-            failed += 1
+            failed_ids.append(admin_id)
+
+    with _session(context) as session:
+        log_admin_action(
+            session,
+            actor_id,
+            "admin_staff_broadcast",
+            "admin",
+            None,
+            {
+                "recipients": recipients,
+                "delivered": delivered_ids,
+                "failed": failed_ids,
+            },
+        )
+        session.commit()
+
+    summary = (
+        "📢 تقرير إرسال الإشعار\n\n"
+        f"👥 الموظفون المستهدفون: {len(recipients)}\n"
+        f"✅ تم التسليم: {len(delivered_ids)}\n"
+        f"❌ فشل الإرسال: {len(failed_ids)}"
+    )
+    if delivered_ids:
+        summary += "\n\n✅ تم الإرسال إلى:\n" + "\n".join(f"• {uid}" for uid in delivered_ids)
+    if failed_ids:
+        summary += (
+            "\n\n⚠️ تعذر الإرسال إلى:\n"
+            + "\n".join(f"• {uid}" for uid in failed_ids)
+            + "\n\nقد يكون الحساب لم يفتح المحادثة مع البوت بعد، أو منع البوت."
+        )
 
     context.user_data.clear()
     await update.effective_message.reply_text(
-        f"✅ تم إرسال الإشعار إلى {delivered} أدمن."
-        + (f"\n⚠️ تعذر الإرسال إلى {failed} أدمن." if failed else ""),
+        "✅ اكتمل إرسال الإشعار.\n\n" + summary,
         reply_markup=admin_router.admin_v2._dashboard_keyboard(),
     )
+
+    # Send a second, direct confirmation to the immutable primary owner so the
+    # delivery result is visible as a dedicated bot notification as well.
+    try:
+        owner_text = (
+            "🔔 تأكيد إرسال إشعار الموظفين\n\n"
+            f"👤 أرسل الإشعار: {actor_id}\n"
+            f"👥 المستهدفون: {len(recipients)} موظف\n"
+            f"✅ تم التسليم: {len(delivered_ids)}\n"
+            f"❌ فشل الإرسال: {len(failed_ids)}"
+        )
+        if delivered_ids:
+            owner_text += "\n\n✅ وصل إلى: " + ", ".join(map(str, delivered_ids))
+        if failed_ids:
+            owner_text += "\n\n⚠️ فشل مع: " + ", ".join(map(str, failed_ids))
+        await context.application.bot.send_message(PRIMARY_ADMIN_ID, owner_text)
+    except Exception:
+        # The sender still receives the inline chat confirmation above even if
+        # the separate owner push cannot be delivered.
+        pass
+
     return END
 
 
