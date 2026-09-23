@@ -93,6 +93,7 @@ def test_order_lifecycle_blocks_invalid_transitions_and_allows_valid_path(monkey
         monkeypatch.setattr(admin_v2, "_dashboard_keyboard", lambda: None)
         monkeypatch.setattr(admin_v2, "_require_role", lambda update, context, roles: True)
         monkeypatch.setattr(admin_v2, "_is_admin", lambda update, context: True)
+        monkeypatch.setattr(admin_v2, "_role", lambda context, user_id=None: "owner")
         for transition in ("confirm", "contacted", "opened", "complete"):
             update = _update(f"admin:v2:order:{transition}:5001")
             asyncio.run(admin_v2._order_transition(update, ctx, 5001, transition))
