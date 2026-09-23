@@ -149,10 +149,16 @@ async def _settings_subsection(update: Any, context: Any, name: str) -> int:
         text = f"💵 الدفع والأسعار\n\n💵 سعر الخدمة: {amount:g} USD\n💳 طريقة الدفع: {method}"
         keyboard = _section("الدفع والأسعار", [[InlineKeyboardButton("✏️ تغيير السعر", callback_data="admin:v2:settings:price")], [InlineKeyboardButton("✏️ تغيير طريقة الدفع", callback_data="admin:v2:settings:method")]])
     elif name == "roles":
-        access = getattr(settings, "admin_access", None)
-        lines = [f"👤 {uid} — {access.role_for(uid) if access else 'owner'}" for uid in sorted(settings.admin_user_ids)]
+        with _legacy._session(context) as session:
+            roles = _legacy.admin_v2.get_admin_roles(session, settings)
+        labels = {"owner": "👑 مالك رئيسي", "manager": "👔 موظف", "viewer": "👀 مشاهدة فقط"}
+        lines = [f"👤 {uid} — {labels.get(role, role)}" for uid, role in sorted(roles.items())]
+        role_buttons = []
+        if _owner(update, context):
+            role_buttons.append([InlineKeyboardButton("➕ إضافة أدمن", callback_data="admin:v2:roles:add")])
+            role_buttons.append([InlineKeyboardButton("🗑️ إزالة صلاحية أدمن", callback_data="admin:v2:roles:remove")])
+        keyboard = _section("الأدمن والصلاحيات", role_buttons)
         text = "👑 الأدمن والصلاحيات\n\n" + ("\n".join(lines) if lines else "لا يوجد أدمنات.")
-        keyboard = _section("الأدمن والصلاحيات", [[InlineKeyboardButton("ℹ️ تفاصيل إدارة الصلاحيات", callback_data="admin:v2:settings:roles")]])
     elif name == "ai":
         text = "🤖 الذكاء الاصطناعي\n\n" + ("✅ Gemini مهيأ" if settings.ai_api_key else "❌ Gemini غير مهيأ") + "\n\n🔒 مفتاح API لا يظهر داخل الواجهة."
         keyboard = _section("الذكاء الاصطناعي", [[InlineKeyboardButton("🔧 فحص حالة النظام", callback_data="admin:v2:section:settings:status")]])
