@@ -180,3 +180,52 @@ def test_owner_can_add_and_remove_employee_and_notify_remaining_admins():
             roles = get_admin_roles(check, Settings())
         assert 1923538306 not in roles
         assert context.user_data == {}
+
+
+def test_primary_admin_and_initial_staff_roles_are_seeded():
+    from app.services.admin_meta import ensure_admin_roles, PRIMARY_ADMIN_ID, DEFAULT_MANAGER_IDS, get_admin_roles
+
+    engine = _db()
+    settings = type(
+        "Settings",
+        (),
+        {
+            "admin_user_ids": frozenset({PRIMARY_ADMIN_ID, *DEFAULT_MANAGER_IDS}),
+            "admin_access": None,
+        },
+    )()
+    with Session(engine) as session:
+        ensure_admin_roles(session, settings)
+        roles = get_admin_roles(session, settings)
+        assert roles[PRIMARY_ADMIN_ID] == "owner"
+        for uid in DEFAULT_MANAGER_IDS:
+            assert roles[uid] == "manager"
+
+
+def test_staff_removal_is_persistent_and_primary_owner_is_pinned():
+    from app.services.admin_meta import get_admin_roles, save_admin_roles, PRIMARY_ADMIN_ID, DEFAULT_MANAGER_IDS
+
+    engine = _db()
+    settings = type(
+        "Settings",
+        (),
+        {
+            "admin_user_ids": frozenset({PRIMARY_ADMIN_ID, *DEFAULT_MANAGER_IDS}),
+            "admin_access": None,
+        },
+    )()
+    with Session(engine) as session:
+        roles = {
+            PRIMARY_ADMIN_ID: "owner",
+            1923538306: "manager",
+            7824433847: "manager",
+        }
+        save_admin_roles(session, roles, PRIMARY_ADMIN_ID)
+        session.commit()
+        roles.pop(1923538306)
+        save_admin_roles(session, roles, PRIMARY_ADMIN_ID)
+        session.commit()
+        saved = get_admin_roles(session, settings)
+        assert 1923538306 not in saved
+        assert saved[7824433847] == "manager"
+        assert saved[PRIMARY_ADMIN_ID] == "owner"
