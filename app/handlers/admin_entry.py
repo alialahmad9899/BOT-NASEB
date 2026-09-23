@@ -280,7 +280,10 @@ async def _roles_manage_screen(update: Any, context: Any) -> int:
         + (" 🔒" if uid == PRIMARY_ADMIN_ID else "")
         for uid, role in sorted(roles.items())
     ]
-    rows = [[InlineKeyboardButton("➕ إضافة أدمن", callback_data="admin:v2:roles:add")]]
+    rows = [
+        [InlineKeyboardButton("➕ إضافة أدمن", callback_data="admin:v2:roles:add")],
+        [InlineKeyboardButton("📢 إشعار لبقية الأدمن", callback_data="admin:v2:roles:notify")],
+    ]
     for uid, role in sorted(roles.items()):
         if uid == PRIMARY_ADMIN_ID:
             continue
@@ -454,7 +457,7 @@ async def _send_staff_notification(update: Any, context: Any, message: str) -> i
     settings = context.application.bot_data["settings"]
     with _session(context) as session:
         roles = get_admin_roles(session, settings)
-        recipients = sorted(uid for uid, role in roles.items() if role == "manager")
+        recipients = sorted(uid for uid in roles if uid != int(update.effective_user.id))
         log_admin_action(
             session,
             int(update.effective_user.id),
@@ -479,8 +482,8 @@ async def _send_staff_notification(update: Any, context: Any, message: str) -> i
 
     context.user_data.clear()
     await update.effective_message.reply_text(
-        f"✅ تم إرسال الإشعار إلى {delivered} موظف."
-        + (f"\n⚠️ تعذر الإرسال إلى {failed} موظف." if failed else ""),
+        f"✅ تم إرسال الإشعار إلى {delivered} أدمن."
+        + (f"\n⚠️ تعذر الإرسال إلى {failed} أدمن." if failed else ""),
         reply_markup=admin_router.admin_v2._dashboard_keyboard(),
     )
     return END
@@ -600,7 +603,7 @@ async def admin_text(update: Any, context: Any) -> int:
         return END
     flow = context.user_data.get("v2_flow")
     if flow == "admin_staff_notify":
-        return await _send_staff_notification(update, context, text)
+        return await _send_staff_notification(update, context, (update.effective_message.text or "").strip())
 
     if flow == "admin_roles_add_id":
         if not _owner(update, context):
