@@ -170,7 +170,7 @@ def test_owner_can_add_and_remove_employee_and_notify_remaining_admins():
         with Session(engine) as check:
             roles = get_admin_roles(check, Settings())
         assert roles[1923538306] == "manager"
-        assert bot.send_message.await_count == 1
+        assert bot.send_message.await_count == 3
         bot.send_message.reset_mock()
 
         with patch.object(admin_v2, "_require_role", return_value=True), patch.object(admin_v2, "_role", return_value="owner"):
