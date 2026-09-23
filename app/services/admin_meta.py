@@ -414,7 +414,7 @@ def _env_admin_role_map(settings: Any) -> dict[str, str]:
 
 
 def ensure_admin_roles(session: Session, settings: Any) -> dict[int, str]:
-    """Load and normalize admin roles; defaults are seeded only on first initialization."""
+    """Initialize the owner/staff defaults once, then preserve panel changes."""
     raw = get_setting(session, ADMIN_ROLES_SETTING_KEY, "")
     roles: dict[int, str] = {}
 
@@ -433,30 +433,17 @@ def ensure_admin_roles(session: Session, settings: Any) -> dict[int, str]:
         except (TypeError, ValueError, json.JSONDecodeError):
             roles = {}
 
-    if roles:
-        roles[PRIMARY_ADMIN_ID] = AdminRole.OWNER.value
-        if get_setting(session, "admin_roles_seed_v2", "") != "1":
-            for uid, role in {int(uid): role for uid, role in _env_admin_role_map(settings).items()}.items():
-                roles.setdefault(uid, role)
-            for uid in DEFAULT_MANAGER_IDS:
-                roles.setdefault(uid, AdminRole.MANAGER.value)
-            set_setting(session, "admin_roles_seed_v2", "1", None)
-
-    # One-time seed for the production owner and initial staff accounts.
-    # The flag makes later removals persistent.
-    if get_setting(session, "admin_roles_seed_v3", "") != "1":
-        roles[PRIMARY_ADMIN_ID] = AdminRole.OWNER.value
-        for uid in DEFAULT_MANAGER_IDS:
-            roles.setdefault(uid, AdminRole.MANAGER.value)
-        set_setting(session, "admin_roles_seed_v3", "1", None)
-
+    # On a fresh/legacy installation with no persisted role map, seed the
+    # requested production owner and staff once. Once a role map exists, it is
+    # authoritative so removals made from the owner panel remain permanent.
     if not roles:
         roles = {int(uid): role for uid, role in _env_admin_role_map(settings).items()}
         roles[PRIMARY_ADMIN_ID] = AdminRole.OWNER.value
         for uid in DEFAULT_MANAGER_IDS:
             roles.setdefault(uid, AdminRole.MANAGER.value)
-        set_setting(session, "admin_roles_seed_v2", "1", None)
 
+    # The primary owner is immutable and cannot be removed/reassigned.
+    roles[PRIMARY_ADMIN_ID] = AdminRole.OWNER.value
     set_setting(
         session,
         ADMIN_ROLES_SETTING_KEY,
