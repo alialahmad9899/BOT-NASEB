@@ -35,7 +35,7 @@ from app.handlers.payment import (
 from app.handlers.safe_routing import admin_callback_router, admin_text_router, client_callback_router
 from app.handlers.start import start_command
 from app.handlers.incomplete_save_override import install as install_incomplete_save_override
-from app.services.admin_meta import backfill_meta
+from app.services.admin_meta import backfill_meta, ensure_admin_roles
 from app.services.gemini_runtime import GeminiAIService
 from app.services.runtime import user_message_for_error
 
@@ -57,6 +57,7 @@ def build_application(settings: Settings) -> Application:
         if session_factory is not None:
             with session_factory() as session:
                 backfill_meta(session)
+                ensure_admin_roles(session, settings)
     else:
         session_factory = None
     application.bot_data["engine"] = engine
