@@ -164,13 +164,16 @@ def test_owner_can_add_and_remove_employee_and_notify_remaining_admins():
 
         added = update()
         asyncio.run(admin_v2._admin_role_add_execute(added, context, "1923538306"))
-        roles = get_admin_roles(session, Settings())
+        from app.services.admin_meta import get_admin_roles
+        with Session(engine) as check:
+            roles = get_admin_roles(check, Settings())
         assert roles[1923538306] == "manager"
         assert bot.send_message.await_count == 1
         bot.send_message.reset_mock()
 
         removed = update()
         asyncio.run(admin_v2._admin_role_remove_execute(removed, context, "1923538306"))
-        roles = get_admin_roles(session, Settings())
+        with Session(engine) as check:
+            roles = get_admin_roles(check, Settings())
         assert 1923538306 not in roles
         assert context.user_data == {}
