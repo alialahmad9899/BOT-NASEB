@@ -13,6 +13,7 @@ from typing import Any
 from app.database.repositories import OrderRepository, ProfileRepository, export_all_data, profile_to_dict
 from app.services.ai import AIExtractionError, AIService, ProfileExtraction, basic_profile_extraction
 from app.services.permissions import is_admin
+from app.services.admin_access import effective_role
 from app.services.profiles import ProfileDraft, apply_text_edits, extraction_to_draft, format_admin_profile, format_draft_preview, validate_profile_extraction
 from app.services.search import filters_from_ai, merge_filters, parse_search_text
 
@@ -96,7 +97,7 @@ def _settings(context: Any):
 
 def _is_admin(update: Any, context: Any) -> bool:
     user = update.effective_user
-    return bool(user and admin_action_allowed(user.id, _settings(context).admin_user_ids))
+    return bool(user and effective_role(context, int(user.id)) is not None)
 
 
 def _session(context: Any):
