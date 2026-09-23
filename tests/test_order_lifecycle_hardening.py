@@ -126,6 +126,7 @@ def test_processed_order_cannot_enter_delete_confirmation(monkeypatch):
 
         ctx = _context(engine)
         monkeypatch.setattr(admin_v2, "_dashboard_keyboard", lambda: None)
+        monkeypatch.setattr(admin_v2, "_require_role", lambda update, context, roles: True)
         update = _update("admin:v2:order:delete:5001")
         result = asyncio.run(admin_v2._delete_order(update, ctx, 5001))
 
