@@ -56,6 +56,7 @@ def test_publish_requires_profile_completeness(monkeypatch):
         monkeypatch.setattr(admin_v2, "_dashboard_keyboard", lambda: None)
         monkeypatch.setattr(admin_v2, "_require_role", lambda update, context, roles: True)
         monkeypatch.setattr(admin_v2, "_is_admin", lambda update, context: True)
+        monkeypatch.setattr(admin_v2, "_role", lambda context, user_id=None: "owner")
         result = asyncio.run(admin_v2.admin_callback(update, context))
 
         assert result == admin_v2.END
