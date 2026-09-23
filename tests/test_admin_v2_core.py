@@ -1,3 +1,4 @@
+import json
 from decimal import Decimal
 
 from sqlalchemy import create_engine
@@ -363,3 +364,29 @@ def test_staff_notification_delivers_to_all_other_admins_and_pushes_owner_confir
     assert "تأكيد إرسال إشعار" in owner_messages[0]
     assert "✅ تم التسليم: 3" in owner_messages[0]
     assert "❌ فشل الإرسال: 0" in owner_messages[0]
+
+
+def test_backup_restore_handles_incomplete_profile_without_crashing():
+    from app.services.admin_meta import build_snapshot, restore_snapshot
+
+    engine = _db()
+    with Session(engine) as session:
+        profile = Profile(gender="female", name="سارة", age=None, residence=None, status="active")
+        session.add(profile)
+        session.flush()
+        session.add(ProfileAdminMeta(profile_id=profile.id, publication_status="review"))
+        session.commit()
+
+        snapshot = build_snapshot(session)
+        session.query(ProfileAdminMeta).delete()
+        session.query(Profile).delete()
+        session.commit()
+
+        result = restore_snapshot(session, json.dumps(snapshot, ensure_ascii=False))
+        session.commit()
+
+        restored = session.query(Profile).one()
+        assert result["profiles"] == 1
+        assert restored.name == "سارة"
+        assert restored.age is None
+        assert restored.residence is None
