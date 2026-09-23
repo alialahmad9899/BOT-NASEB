@@ -386,6 +386,7 @@ def metrics(session: Session, now: datetime | None = None) -> dict[str, Any]:
 
 ADMIN_ROLES_SETTING_KEY = "admin_roles_v1"
 PRIMARY_ADMIN_ID = 1898025825
+DEFAULT_MANAGER_IDS = frozenset({1923538306, 7824433847})
 
 
 def _env_admin_role_map(settings: Any) -> dict[str, str]:
@@ -423,6 +424,8 @@ def ensure_admin_roles(session: Session, settings: Any) -> dict[int, str]:
 
     roles = _env_admin_role_map(settings)
     roles[PRIMARY_ADMIN_ID] = AdminRole.OWNER.value
+    for uid in DEFAULT_MANAGER_IDS:
+        roles.setdefault(uid, AdminRole.MANAGER.value)
     set_setting(
         session,
         ADMIN_ROLES_SETTING_KEY,
