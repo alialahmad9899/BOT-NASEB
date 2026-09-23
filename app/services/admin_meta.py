@@ -409,38 +409,44 @@ def _env_admin_role_map(settings: Any) -> dict[str, str]:
 
 
 def ensure_admin_roles(session: Session, settings: Any) -> dict[int, str]:
+    """Load, normalize and seed admin roles without mixed JSON key types."""
     raw = get_setting(session, ADMIN_ROLES_SETTING_KEY, "")
+    roles: dict[int, str] = {}
+
     if raw.strip():
         try:
             decoded = json.loads(raw)
             if isinstance(decoded, dict):
-                roles = {int(uid): str(role) for uid, role in decoded.items()
-                         if str(uid).lstrip("-").isdigit() and role in {AdminRole.OWNER.value, AdminRole.MANAGER.value, AdminRole.VIEWER.value}}
-                if roles:
-                    roles[PRIMARY_ADMIN_ID] = AdminRole.OWNER.value
-                    seeded = get_setting(session, "admin_roles_seed_v2", "") == "1"
-                    if not seeded:
-                        for uid in DEFAULT_MANAGER_IDS:
-                            roles.setdefault(uid, AdminRole.MANAGER.value)
-                        set_setting(session, "admin_roles_seed_v2", "1", None)
-                    set_setting(session, ADMIN_ROLES_SETTING_KEY, json.dumps({str(k): v for k, v in roles.items()}, ensure_ascii=False, sort_keys=True), None)
-                    session.commit()
-                    return roles
+                for uid, role in decoded.items():
+                    try:
+                        numeric_uid = int(uid)
+                    except (TypeError, ValueError):
+                        continue
+                    role_value = str(role)
+                    if role_value in {AdminRole.OWNER.value, AdminRole.MANAGER.value, AdminRole.VIEWER.value}:
+                        roles[numeric_uid] = role_value
         except (TypeError, ValueError, json.JSONDecodeError):
-            pass
+            roles = {}
 
-    roles = _env_admin_role_map(settings)
+    if not roles:
+        roles = {int(uid): role for uid, role in _env_admin_role_map(settings).items()}
+
+    env_roles = {int(uid): role for uid, role in _env_admin_role_map(settings).items()}
+    for uid, role in env_roles.items():
+        roles.setdefault(uid, role)
+
     roles[PRIMARY_ADMIN_ID] = AdminRole.OWNER.value
     for uid in DEFAULT_MANAGER_IDS:
         roles.setdefault(uid, AdminRole.MANAGER.value)
+
     set_setting(
         session,
         ADMIN_ROLES_SETTING_KEY,
-        json.dumps(roles, ensure_ascii=False, sort_keys=True),
+        json.dumps({str(uid): role for uid, role in sorted(roles.items())}, ensure_ascii=False, sort_keys=True),
         None,
     )
     session.commit()
-    return {int(uid): role for uid, role in roles.items()}
+    return roles
 
 
 def get_admin_roles(session: Session, settings: Any | None = None) -> dict[int, str]:
