@@ -246,7 +246,7 @@ def restore_snapshot(session: Session, snapshot_json: str) -> dict[str, int]:
             request_number=item.get("request_number"),
             gender=item.get("gender") or "",
             name=item.get("name"),
-            age=int(item.get("age")),
+            age=int(item["age"]) if item.get("age") is not None else None,
             residence=item.get("residence") or "",
             marital_status=item.get("marital_status"),
             children_count=item.get("children_count"),
