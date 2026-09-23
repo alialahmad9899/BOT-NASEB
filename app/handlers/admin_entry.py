@@ -18,7 +18,7 @@ from app.database.admin_models import AdminBackup, ProfileAdminMeta
 from app.database.models import Order
 from app.database.repositories import OrderRepository, ProfileRepository
 from app.handlers import admin_router
-from app.services.admin_access import effective_role
+from app.services.admin_access import effective_admin_ids, effective_role
 from app.services.admin_meta import create_backup, get_admin_roles, get_order_meta, get_profile_meta, list_audit_logs, log_admin_action, metrics, payment_method, service_price, save_admin_roles, ADMIN_ROLES_SETTING_KEY, PRIMARY_ADMIN_ID
 from app.services.profile_quality import score_profile
 from app.services.profiles import ProfileDraft, format_marriage_post
@@ -261,6 +261,204 @@ async def _bulk_delete_pending_orders(update: Any, context: Any) -> int:
     return END
 
 
+
+def _role_label(role: str) -> str:
+    return {"owner": "👑 مالك رئيسي", "manager": "👔 موظف", "viewer": "👀 مشاهدة فقط"}.get(role, role)
+
+
+async def _roles_manage_screen(update: Any, context: Any) -> int:
+    user = update.effective_user
+    if user is None or not _owner(update, context):
+        await update.callback_query.answer("❌ إدارة الأدمنات للمالك الرئيسي فقط.", show_alert=True)
+        return END
+    settings = context.application.bot_data["settings"]
+    with _session(context) as session:
+        roles = get_admin_roles(session, settings)
+    lines = [
+        f"👤 {uid} — {_role_label(role)}"
+        + (" 🔒" if uid == PRIMARY_ADMIN_ID else "")
+        for uid, role in sorted(roles.items())
+    ]
+    rows = [[InlineKeyboardButton("➕ إضافة أدمن", callback_data="admin:v2:roles:add")]]
+    for uid, role in sorted(roles.items()):
+        if uid == PRIMARY_ADMIN_ID:
+            continue
+        rows.append([InlineKeyboardButton(f"🗑️ إزالة {uid} ({_role_label(role)})", callback_data=f"admin:v2:roles:remove:{uid}")])
+    rows.append([InlineKeyboardButton("⬅️ إعدادات الصلاحيات", callback_data="admin:v2:section:settings:roles")])
+    await update.callback_query.edit_message_text(
+        "👑 إدارة الأدمنات\n\n"
+        + ("\n".join(lines) if lines else "لا يوجد أدمنات.")
+        + "\n\n🔒 المالك الرئيسي لا يمكن إزالة صلاحياته من داخل البوت.",
+        reply_markup=InlineKeyboardMarkup(rows),
+    )
+    return END
+
+
+async def _start_admin_add(update: Any, context: Any) -> int:
+    if not _owner(update, context):
+        await update.callback_query.answer("❌ إضافة الأدمنات للمالك الرئيسي فقط.", show_alert=True)
+        return END
+    context.user_data["v2_flow"] = "admin_roles_add_id"
+    await update.callback_query.edit_message_text(
+        "➕ إضافة أدمن\n\n"
+        "ابعت Telegram User ID للشخص اللي بدك تضيفه.\n"
+        "بعدها منختار نوع الصلاحية.",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("❌ إلغاء", callback_data="admin:v2:roles:manage")],
+            [InlineKeyboardButton("⬅️ إعدادات الصلاحيات", callback_data="admin:v2:section:settings:roles")],
+        ]),
+    )
+    return ADMIN_V2_INPUT
+
+
+async def _save_admin_role(update: Any, context: Any, role: str) -> int:
+    if not _owner(update, context):
+        await update.callback_query.answer("❌ إدارة الأدمنات للمالك الرئيسي فقط.", show_alert=True)
+        return END
+    target_id = context.user_data.get("v2_new_admin_id")
+    if not target_id or role not in {"manager", "viewer"}:
+        context.user_data.clear()
+        await update.callback_query.edit_message_text("❌ تعذرت إضافة الأدمن. بلّش العملية من جديد.", reply_markup=admin_router.admin_v2._dashboard_keyboard())
+        return END
+    target_id = int(target_id)
+    if target_id == PRIMARY_ADMIN_ID:
+        context.user_data.clear()
+        await update.callback_query.edit_message_text("⚠️ هذا الحساب هو المالك الرئيسي أصلاً.", reply_markup=admin_router.admin_v2._dashboard_keyboard())
+        return END
+
+    settings = context.application.bot_data["settings"]
+    with _session(context) as session:
+        roles = get_admin_roles(session, settings)
+        previous = roles.get(target_id)
+        roles[target_id] = role
+        save_admin_roles(session, roles, int(update.effective_user.id))
+        log_admin_action(
+            session,
+            int(update.effective_user.id),
+            "admin_role_add" if previous is None else "admin_role_change",
+            "admin",
+            target_id,
+            {"role": role, "previous": previous},
+        )
+        session.commit()
+
+    context.user_data.clear()
+    role_label = _role_label(role)
+    await update.callback_query.edit_message_text(
+        f"✅ تم إضافة/تحديث الأدمن {target_id}.\n\n"
+        f"👤 الصلاحية: {role_label}",
+        reply_markup=admin_router.admin_v2._dashboard_keyboard(),
+    )
+    await _notify_admin_role_change(context, int(update.effective_user.id), target_id, "add", role)
+    return END
+
+
+async def _confirm_remove_admin(update: Any, context: Any, target_id: int) -> int:
+    if not _owner(update, context):
+        await update.callback_query.answer("❌ إزالة الأدمنات للمالك الرئيسي فقط.", show_alert=True)
+        return END
+    if target_id == PRIMARY_ADMIN_ID:
+        await update.callback_query.answer("🔒 لا يمكن إزالة المالك الرئيسي.", show_alert=True)
+        return END
+    with _session(context) as session:
+        roles = get_admin_roles(session, context.application.bot_data["settings"])
+    role = roles.get(target_id)
+    if role is None:
+        await update.callback_query.edit_message_text("❌ هذا الحساب مو مسجل كأدمن.", reply_markup=admin_router.admin_v2._dashboard_keyboard())
+        return END
+    context.user_data["v2_remove_admin_id"] = target_id
+    await update.callback_query.edit_message_text(
+        f"⚠️ إزالة صلاحية الأدمن\n\n"
+        f"🆔 Telegram ID: {target_id}\n"
+        f"👤 الصلاحية الحالية: {_role_label(role)}\n\n"
+        "متأكد بدك تشيل عنه صلاحية الأدمن؟",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🗑️ نعم، أزل الصلاحية", callback_data=f"admin:v2:roles:remove:confirm:{target_id}")],
+            [InlineKeyboardButton("❌ إلغاء", callback_data="admin:v2:roles:manage")],
+        ]),
+    )
+    return END
+
+
+async def _remove_admin(update: Any, context: Any, target_id: int) -> int:
+    if not _owner(update, context):
+        await update.callback_query.answer("❌ إزالة الأدمنات للمالك الرئيسي فقط.", show_alert=True)
+        return END
+    if target_id == PRIMARY_ADMIN_ID:
+        await update.callback_query.answer("🔒 لا يمكن إزالة المالك الرئيسي.", show_alert=True)
+        return END
+    settings = context.application.bot_data["settings"]
+    with _session(context) as session:
+        roles = get_admin_roles(session, settings)
+        previous = roles.pop(target_id, None)
+        if previous is None:
+            await update.callback_query.edit_message_text("❌ هذا الحساب لم يعد مسجلاً كأدمن.", reply_markup=admin_router.admin_v2._dashboard_keyboard())
+            return END
+        save_admin_roles(session, roles, int(update.effective_user.id))
+        log_admin_action(
+            session,
+            int(update.effective_user.id),
+            "admin_role_remove",
+            "admin",
+            target_id,
+            {"previous": previous},
+        )
+        session.commit()
+
+    context.user_data.clear()
+    await update.callback_query.edit_message_text(
+        f"✅ تمت إزالة صلاحية الأدمن عن {target_id}.",
+        reply_markup=admin_router.admin_v2._dashboard_keyboard(),
+    )
+    await _notify_admin_role_change(context, int(update.effective_user.id), target_id, "remove", previous)
+    return END
+
+
+async def _notify_admin_role_change(context: Any, actor_id: int, target_id: int, action: str, role: str) -> None:
+    active_admins = set(effective_admin_ids(context))
+    if action == "add":
+        message_target = (
+            "👑 إشعار صلاحيات\n\n"
+            "تمت إضافتك كأدمن في «لقاء ونصيب».\n"
+            f"🆔 Telegram ID: {target_id}\n"
+            f"👤 الصلاحية: {_role_label(role)}\n\n"
+            "يمكنك استخدام لوحة الأدمن حسب صلاحياتك."
+        )
+        try:
+            await context.application.bot.send_message(target_id, message_target)
+        except Exception:
+            pass
+        message_others = (
+            "🔔 إشعار إداري\n\n"
+            "تمت إضافة أدمن جديد إلى «لقاء ونصيب».\n"
+            f"🆔 Telegram ID: {target_id}\n"
+            f"👤 الصلاحية: {_role_label(role)}"
+        )
+        recipients = active_admins - {actor_id, target_id}
+    else:
+        message_target = (
+            "🔔 إشعار صلاحيات\n\n"
+            "تمت إزالة صلاحية الأدمن عن حسابك في «لقاء ونصيب».\n"
+            "إذا كان هذا بالخطأ، تواصل مع المالك الرئيسي."
+        )
+        try:
+            await context.application.bot.send_message(target_id, message_target)
+        except Exception:
+            pass
+        message_others = (
+            "🔔 إشعار إداري\n\n"
+            "تمت إزالة صلاحية أدمن من أحد الحسابات.\n"
+            f"🆔 Telegram ID: {target_id}\n"
+            f"👤 الصلاحية السابقة: {_role_label(role)}"
+        )
+        recipients = active_admins - {actor_id}
+    for admin_id in recipients:
+        try:
+            await context.application.bot.send_message(admin_id, message_others)
+        except Exception:
+            pass
+
+
 async def admin_callback(update: Any, context: Any) -> int:
     user = update.effective_user
     if user is None:
@@ -274,6 +472,21 @@ async def admin_callback(update: Any, context: Any) -> int:
     if role == "viewer" and _viewer_blocked(data):
         await update.callback_query.answer("👀 حساب المشاهدة لا يملك صلاحية التعديل أو الحذف.", show_alert=True)
         return END
+
+    if data == "admin:v2:roles:manage":
+        return await _roles_manage_screen(update, context)
+    if data == "admin:v2:roles:add":
+        return await _start_admin_add(update, context)
+    if data == "admin:v2:roles:add:manager":
+        return await _save_admin_role(update, context, "manager")
+    if data == "admin:v2:roles:add:viewer":
+        return await _save_admin_role(update, context, "viewer")
+    remove_confirm = re.fullmatch(r"admin:v2:roles:remove:confirm:(\d+)", data)
+    if remove_confirm:
+        return await _remove_admin(update, context, int(remove_confirm.group(1)))
+    remove_match = re.fullmatch(r"admin:v2:roles:remove:(\d+)", data)
+    if remove_match:
+        return await _confirm_remove_admin(update, context, int(remove_match.group(1)))
 
     publish_match = re.fullmatch(r"admin:v2:publish:text:(\d+)", data)
     if publish_match:
@@ -312,6 +525,43 @@ async def admin_text(update: Any, context: Any) -> int:
         await update.effective_message.reply_text("❌ ما عندك صلاحية لهالعملية.")
         return END
     flow = context.user_data.get("v2_flow")
+    if flow == "admin_roles_add_id":
+        if not _owner(update, context):
+            context.user_data.clear()
+            await update.effective_message.reply_text("❌ إدارة الأدمنات للمالك الرئيسي فقط.", reply_markup=admin_router.admin_v2._dashboard_keyboard())
+            return END
+        raw_id = (update.effective_message.text or "").strip()
+        if not raw_id.isdigit() or int(raw_id) <= 0:
+            await update.effective_message.reply_text(
+                "❌ Telegram User ID لازم يكون رقماً صحيحاً موجباً.",
+                reply_markup=_back_keyboard(),
+            )
+            return ADMIN_V2_INPUT
+        target_id = int(raw_id)
+        if target_id == PRIMARY_ADMIN_ID:
+            context.user_data.clear()
+            await update.effective_message.reply_text(
+                "⚠️ هذا الحساب هو المالك الرئيسي أصلاً.",
+                reply_markup=admin_router.admin_v2._dashboard_keyboard(),
+            )
+            return END
+        with _session(context) as session:
+            roles = get_admin_roles(session, context.application.bot_data["settings"])
+            current = roles.get(target_id)
+        context.user_data["v2_new_admin_id"] = target_id
+        current_label = _role_label(current) if current else "غير مضاف"
+        await update.effective_message.reply_text(
+            f"🆔 Telegram ID: {target_id}\n"
+            f"👤 الحالة الحالية: {current_label}\n\n"
+            "اختار نوع الصلاحية:",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("👔 موظف", callback_data="admin:v2:roles:add:manager")],
+                [InlineKeyboardButton("👀 مشاهدة فقط", callback_data="admin:v2:roles:add:viewer")],
+                [InlineKeyboardButton("❌ إلغاء", callback_data="admin:v2:roles:manage")],
+            ]),
+        )
+        return ADMIN_V2_INPUT
+
     if _role(context, int(user.id)) == "viewer" and flow in {
         "add_raw", "add_edit", "edit_field", "reserve_reason", "delete_profile_confirm", "delete_order_confirm",
         "danger_selected", "danger_selected_confirm", "danger_all", "restore_confirm", "settings_price", "settings_method",
