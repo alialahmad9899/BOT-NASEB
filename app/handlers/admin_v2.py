@@ -148,33 +148,79 @@ async def _admin_notify_start(update: Any, context: Any) -> int:
 
 
 async def _admin_role_add_execute(update: Any, context: Any, value: str) -> int:
-    if not _require_role(update, context, {"owner"}): context.user_data.clear(); return END
-    try: user_id=int(value.translate(str.maketrans("٠١٢٣٤٥٦٧٨٩","0123456789")).strip())
+    if not _require_role(update, context, {"owner"}):
+        context.user_data.clear()
+        return END
+    try:
+        user_id=int(value.translate(str.maketrans("٠١٢٣٤٥٦٧٨٩","0123456789")).strip())
     except ValueError:
-        await update.effective_message.reply_text("❌ لازم Telegram User ID صحيح."); return ADMIN_V2_INPUT
-    if user_id<=0 or user_id==PRIMARY_ADMIN_ID:
-        await update.effective_message.reply_text("🔒 الرقم محمي أو غير صالح.", reply_markup=_back_keyboard()); return ADMIN_V2_INPUT
+        await update.effective_message.reply_text("❌ لازم Telegram User ID صحيح.")
+        return ADMIN_V2_INPUT
+    if user_id <= 0 or user_id == PRIMARY_ADMIN_ID:
+        await update.effective_message.reply_text("🔒 الرقم محمي أو غير صالح.", reply_markup=_back_keyboard())
+        return ADMIN_V2_INPUT
     settings=context.application.bot_data["settings"]
     with _session(context) as session:
-        roles=get_admin_roles(session,settings); roles[user_id]="manager"; save_admin_roles(session,roles,int(update.effective_user.id))
-        log_admin_action(session,int(update.effective_user.id),"admin_role_add","admin",user_id,{"role":"manager"}); session.commit()
-    context.user_data.clear(); await update.effective_message.reply_text(f"✅ تمت إضافة {user_id} كموظف أدمن.",reply_markup=_dashboard_keyboard()); return END
+        roles=get_admin_roles(session,settings)
+        previous=roles.get(user_id)
+        roles[user_id]="manager"
+        save_admin_roles(session,roles,int(update.effective_user.id))
+        log_admin_action(session,int(update.effective_user.id),"admin_role_add","admin",user_id,{"role":"manager","previous_role":previous})
+        session.commit()
+        recipients=sorted(uid for uid in roles if uid != int(update.effective_user.id))
+    notice=f"📢 إشعار إداري — تمت إضافة الأدمن {user_id} كموظف بواسطة المالك الرئيسي."
+    sent=0
+    for recipient in recipients:
+        try:
+            await context.application.bot.send_message(recipient, notice)
+            sent += 1
+        except Exception:
+            pass
+    context.user_data.clear()
+    await update.effective_message.reply_text(
+        f"✅ تمت إضافة {user_id} كموظف أدمن.\n\n📢 تم إشعار {sent} أدمن.",
+        reply_markup=_dashboard_keyboard()
+    )
+    return END
 
 
 async def _admin_role_remove_execute(update: Any, context: Any, value: str) -> int:
-    if not _require_role(update, context, {"owner"}): context.user_data.clear(); return END
-    try: user_id=int(value.translate(str.maketrans("٠١٢٣٤٥٦٧٨٩","0123456789")).strip())
+    if not _require_role(update, context, {"owner"}):
+        context.user_data.clear()
+        return END
+    try:
+        user_id=int(value.translate(str.maketrans("٠١٢٣٤٥٦٧٨٩","0123456789")).strip())
     except ValueError:
-        await update.effective_message.reply_text("❌ لازم Telegram User ID صحيح."); return ADMIN_V2_INPUT
-    if user_id==PRIMARY_ADMIN_ID:
-        await update.effective_message.reply_text("🔒 ما فيك تسحب صلاحية المالك الرئيسي.",reply_markup=_back_keyboard()); return ADMIN_V2_INPUT
+        await update.effective_message.reply_text("❌ لازم Telegram User ID صحيح.")
+        return ADMIN_V2_INPUT
+    if user_id == PRIMARY_ADMIN_ID:
+        await update.effective_message.reply_text("🔒 ما فيك تسحب صلاحية المالك الرئيسي.", reply_markup=_back_keyboard())
+        return ADMIN_V2_INPUT
     settings=context.application.bot_data["settings"]
     with _session(context) as session:
-        roles=get_admin_roles(session,settings); old=roles.pop(user_id,None)
+        roles=get_admin_roles(session,settings)
+        old=roles.pop(user_id,None)
         if old is None:
-            await update.effective_message.reply_text("ℹ️ هالمستخدم مو موجود ضمن الأدمنات.",reply_markup=_back_keyboard()); return ADMIN_V2_INPUT
-        save_admin_roles(session,roles,int(update.effective_user.id)); log_admin_action(session,int(update.effective_user.id),"admin_role_remove","admin",user_id,{"old_role":old}); session.commit()
-    context.user_data.clear(); await update.effective_message.reply_text(f"✅ تمت إزالة صلاحيات الأدمن عن {user_id}.",reply_markup=_dashboard_keyboard()); return END
+            await update.effective_message.reply_text("ℹ️ هالمستخدم مو موجود ضمن الأدمنات.",reply_markup=_back_keyboard())
+            return ADMIN_V2_INPUT
+        save_admin_roles(session,roles,int(update.effective_user.id))
+        log_admin_action(session,int(update.effective_user.id),"admin_role_remove","admin",user_id,{"old_role":old})
+        session.commit()
+        recipients=sorted(uid for uid in roles if uid != int(update.effective_user.id))
+    notice=f"📢 إشعار إداري — تمت إزالة صلاحيات الأدمن عن {user_id} بواسطة المالك الرئيسي."
+    sent=0
+    for recipient in recipients:
+        try:
+            await context.application.bot.send_message(recipient, notice)
+            sent += 1
+        except Exception:
+            pass
+    context.user_data.clear()
+    await update.effective_message.reply_text(
+        f"✅ تمت إزالة صلاحيات الأدمن عن {user_id}.\n\n📢 تم إشعار {sent} أدمن.",
+        reply_markup=_dashboard_keyboard()
+    )
+    return END
 
 
 async def _admin_notify_execute(update: Any, context: Any, value: str) -> int:
