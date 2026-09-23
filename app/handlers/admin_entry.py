@@ -424,9 +424,9 @@ async def _start_admin_notify(update: Any, context: Any) -> int:
         return END
     context.user_data["v2_flow"] = "admin_staff_notify"
     await update.callback_query.edit_message_text(
-        "📢 إشعار للموظفين\n\n"
-        "اكتب نص الرسالة اللي بدك توصل للموظفين.\n"
-        "رح تنبعت لكل حسابات الموظفين المسجلين كـ«موظف».",
+        "📢 إشعار لبقية الأدمن\n\n"
+        "اكتب نص الرسالة اللي بدك توصل لبقية الأدمن.\n"
+        "رح تنبعت لكل الأدمن المسجلين غيرك.",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("❌ إلغاء", callback_data="admin:v2:roles:manage")],
             [InlineKeyboardButton("⬅️ إدارة الأدمنات", callback_data="admin:v2:roles:manage")],
@@ -455,12 +455,8 @@ async def _send_staff_notification(update: Any, context: Any, message: str) -> i
     actor_id = int(update.effective_user.id)
     with _session(context) as session:
         roles = get_admin_roles(session, settings)
-        # Staff broadcasts target employees only. View-only accounts are not
-        # part of the employee notification list.
-        recipients = sorted(
-            uid for uid, role in roles.items()
-            if role == "manager" and uid != actor_id
-        )
+        # Owner broadcasts target every other active admin, regardless of role.
+        recipients = sorted(uid for uid in roles if uid != actor_id)
 
     delivered_ids: list[int] = []
     failed_ids: list[int] = []
@@ -491,7 +487,7 @@ async def _send_staff_notification(update: Any, context: Any, message: str) -> i
 
     summary = (
         "📢 تقرير إرسال الإشعار\n\n"
-        f"👥 الموظفون المستهدفون: {len(recipients)}\n"
+        f"👥 الأدمن المستهدفون: {len(recipients)}\n"
         f"✅ تم التسليم: {len(delivered_ids)}\n"
         f"❌ فشل الإرسال: {len(failed_ids)}"
     )
@@ -516,7 +512,7 @@ async def _send_staff_notification(update: Any, context: Any, message: str) -> i
         owner_text = (
             "🔔 تأكيد إرسال إشعار الموظفين\n\n"
             f"👤 أرسل الإشعار: {actor_id}\n"
-            f"👥 المستهدفون: {len(recipients)} موظف\n"
+            f"👥 المستهدفون: {len(recipients)} أدمن\n"
             f"✅ تم التسليم: {len(delivered_ids)}\n"
             f"❌ فشل الإرسال: {len(failed_ids)}"
         )
