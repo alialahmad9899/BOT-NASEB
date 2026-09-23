@@ -58,9 +58,8 @@ async def start_command(update: Any, context: Any) -> None:
     reset_session_for_start(context)
     user = update.effective_user
     message = update.effective_message
-    settings = context.application.bot_data["settings"]
     role = effective_role(context, user.id)
-    content = start_content_for_user(user.id, settings.admin_user_ids) if role is None else StartContent(role="admin", text=ADMIN_START_TEXT)
+    content = StartContent(role="admin", text=ADMIN_START_TEXT) if role is not None else StartContent(role="client", text=CLIENT_START_TEXT)
     if content.role == "admin":
         from app.keyboards.admin import admin_main_keyboard
         keyboard = admin_main_keyboard()
