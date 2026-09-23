@@ -403,6 +403,8 @@ def _env_admin_role_map(settings: Any) -> dict[str, str]:
     for uid in access.legacy_ids:
         roles.setdefault(str(uid), AdminRole.OWNER.value)
     roles.setdefault(str(PRIMARY_ADMIN_ID), AdminRole.OWNER.value)
+    for uid in DEFAULT_MANAGER_IDS:
+        roles.setdefault(str(uid), AdminRole.MANAGER.value)
     return roles
 
 
