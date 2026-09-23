@@ -279,13 +279,13 @@ def test_staff_broadcast_targets_managers_and_confirms_primary_owner():
     ids = [chat_id for chat_id, _ in sent]
     assert 1923538306 in ids
     assert 7824433847 in ids
-    assert 555555555 not in ids
+    assert 555555555 in ids
     assert 1898025825 in ids  # dedicated owner delivery report
     owner_messages = [text for chat_id, text in sent if chat_id == 1898025825]
-    assert any("تأكيد إرسال إشعار الموظفين" in text for text in owner_messages)
+    assert any("تأكيد إرسال إشعار" in text for text in owner_messages)
 
   
-def test_staff_notification_delivers_to_managers_and_pushes_owner_confirmation():
+def test_staff_notification_delivers_to_all_other_admins_and_pushes_owner_confirmation():
     import asyncio
     from types import SimpleNamespace
 
@@ -326,18 +326,18 @@ def test_staff_notification_delivers_to_managers_and_pushes_owner_confirmation()
     ids = [chat_id for chat_id, _ in sent]
     assert 1923538306 in ids
     assert 7824433847 in ids
-    assert 987654321 not in ids
+    assert 987654321 in ids
     assert 1898025825 in ids
 
-    employee_messages = [
+    admin_messages = [
         text for chat_id, text in sent
-        if chat_id in {1923538306, 7824433847}
+        if chat_id in {1923538306, 7824433847, 987654321}
     ]
-    assert len(employee_messages) == 2
-    assert all("اجتماع الموظفين اليوم الساعة 6" in text for text in employee_messages)
+    assert len(employee_messages) == 3
+    assert all("اجتماع الموظفين اليوم الساعة 6" in text for text in admin_messages)
 
     owner_messages = [text for chat_id, text in sent if chat_id == 1898025825]
     assert len(owner_messages) == 1
-    assert "تأكيد إرسال إشعار الموظفين" in owner_messages[0]
-    assert "✅ تم التسليم: 2" in owner_messages[0]
+    assert "تأكيد إرسال إشعار" in owner_messages[0]
+    assert "✅ تم التسليم: 3" in owner_messages[0]
     assert "❌ فشل الإرسال: 0" in owner_messages[0]
