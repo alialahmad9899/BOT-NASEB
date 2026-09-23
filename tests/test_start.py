@@ -65,12 +65,24 @@ def test_admin_start_command_uses_inline_keyboard_only():
     assert context.user_data == {}
 
 
-def test_database_backed_employee_is_detected_as_admin(monkeypatch):
+def test_database_backed_employee_is_detected_as_admin_command(monkeypatch):
     import app.handlers.start as start_module
 
-    class FakeContext:
-        user_data = {}
-        application = SimpleNamespace(bot_data={"settings": SimpleNamespace()})
+    reply_text = AsyncMock()
+    context = SimpleNamespace(
+        user_data={"stale": "state"},
+        application=SimpleNamespace(bot_data={"settings": SimpleNamespace()}),
+    )
+    update = SimpleNamespace(
+        effective_user=SimpleNamespace(id=1923538306),
+        effective_message=SimpleNamespace(reply_text=reply_text),
+    )
 
     monkeypatch.setattr(start_module, "effective_role", lambda context, user_id: "manager" if user_id == 1923538306 else None)
-    assert start_module.start_content_for_user(1923538306, {1898025825}).role == "admin"
+    asyncio.run(start_module.start_command(update, context))
+
+    markup = reply_text.await_args.kwargs["reply_markup"]
+    assert isinstance(markup, InlineKeyboardMarkup)
+    assert "admin" not in "
+".join(button.text for row in markup.inline_keyboard for button in row).lower()
+    assert context.user_data == {}
