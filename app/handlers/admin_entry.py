@@ -415,6 +415,77 @@ async def _remove_admin(update: Any, context: Any, target_id: int) -> int:
     return END
 
 
+async def _start_admin_notify(update: Any, context: Any) -> int:
+    if not _owner(update, context):
+        await update.callback_query.answer("❌ إرسال الإشعارات للمالك الرئيسي فقط.", show_alert=True)
+        return END
+    context.user_data["v2_flow"] = "admin_staff_notify"
+    await update.callback_query.edit_message_text(
+        "📢 إشعار للموظفين
+
+"
+        "اكتب نص الرسالة اللي بدك توصل للموظفين.
+"
+        "رح تنبعت لكل حسابات الموظفين المسجلين كـ«موظف».",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("❌ إلغاء", callback_data="admin:v2:roles:manage")],
+            [InlineKeyboardButton("⬅️ إدارة الأدمنات", callback_data="admin:v2:roles:manage")],
+        ]),
+    )
+    return ADMIN_V2_INPUT
+
+
+async def _send_staff_notification(update: Any, context: Any, message: str) -> int:
+    if not _owner(update, context):
+        context.user_data.clear()
+        await update.effective_message.reply_text(
+            "❌ إرسال الإشعارات للمالك الرئيسي فقط.",
+            reply_markup=admin_router.admin_v2._dashboard_keyboard(),
+        )
+        return END
+    message = message.strip()
+    if not message:
+        await update.effective_message.reply_text(
+            "❌ اكتب نص الإشعار أولاً.",
+            reply_markup=_back_keyboard(),
+        )
+        return ADMIN_V2_INPUT
+
+    settings = context.application.bot_data["settings"]
+    with _session(context) as session:
+        roles = get_admin_roles(session, settings)
+        recipients = sorted(uid for uid, role in roles.items() if role == "manager")
+        log_admin_action(
+            session,
+            int(update.effective_user.id),
+            "admin_staff_broadcast",
+            "admin",
+            None,
+            {"recipients": recipients},
+        )
+        session.commit()
+
+    delivered = 0
+    failed = 0
+    for admin_id in recipients:
+        try:
+            await context.application.bot.send_message(
+                admin_id,
+                "📢 إشعار من المالك الرئيسي في «لقاء ونصيب»\n\n" + message,
+            )
+            delivered += 1
+        except Exception:
+            failed += 1
+
+    context.user_data.clear()
+    await update.effective_message.reply_text(
+        f"✅ تم إرسال الإشعار إلى {delivered} موظف."
+        + (f"\n⚠️ تعذر الإرسال إلى {failed} موظف." if failed else ""),
+        reply_markup=admin_router.admin_v2._dashboard_keyboard(),
+    )
+    return END
+
+
 async def _notify_admin_role_change(context: Any, actor_id: int, target_id: int, action: str, role: str) -> None:
     active_admins = set(effective_admin_ids(context))
     if action == "add":
@@ -478,6 +549,8 @@ async def admin_callback(update: Any, context: Any) -> int:
         return await _roles_manage_screen(update, context)
     if data == "admin:v2:roles:add":
         return await _start_admin_add(update, context)
+    if data == "admin:v2:roles:notify":
+        return await _start_admin_notify(update, context)
     if data == "admin:v2:roles:add:manager":
         return await _save_admin_role(update, context, "manager")
     if data == "admin:v2:roles:add:viewer":
@@ -526,6 +599,9 @@ async def admin_text(update: Any, context: Any) -> int:
         await update.effective_message.reply_text("❌ ما عندك صلاحية لهالعملية.")
         return END
     flow = context.user_data.get("v2_flow")
+    if flow == "admin_staff_notify":
+        return await _send_staff_notification(update, context, text)
+
     if flow == "admin_roles_add_id":
         if not _owner(update, context):
             context.user_data.clear()
