@@ -446,6 +446,14 @@ def ensure_admin_roles(session: Session, settings: Any) -> dict[int, str]:
         for uid in DEFAULT_MANAGER_IDS:
             roles.setdefault(uid, AdminRole.MANAGER.value)
 
+    # One-time migration for existing installations: seed the requested
+    # staff accounts into the persisted role map, then freeze the seed.
+    # Future removals from the owner panel are preserved.
+    if get_setting(session, "admin_roles_seed_v4", "") != "1":
+        for uid in DEFAULT_MANAGER_IDS:
+            roles.setdefault(uid, AdminRole.MANAGER.value)
+        set_setting(session, "admin_roles_seed_v4", "1", None)
+
     # The primary owner is immutable and cannot be removed/reassigned.
     roles[PRIMARY_ADMIN_ID] = AdminRole.OWNER.value
     set_setting(
