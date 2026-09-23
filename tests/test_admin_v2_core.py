@@ -150,7 +150,7 @@ def test_owner_can_add_and_remove_employee_and_notify_remaining_admins():
         context = SimpleNamespace(
             user_data={},
             application=SimpleNamespace(
-                bot_data={"session_factory": lambda: session, "settings": Settings()},
+                bot_data={"session_factory": lambda: Session(engine), "settings": Settings()},
                 bot=bot,
             ),
         )
