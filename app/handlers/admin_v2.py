@@ -23,6 +23,7 @@ from app.database.models import Order, Profile, ProfileContact
 from app.database.repositories import OrderRepository, ProfileRepository
 from app.handlers import admin as legacy
 from app.services.ai import AIExtractionError, AIService, ProfileExtraction, basic_profile_extraction
+from app.services.admin_access import effective_role, effective_admin_ids
 from app.services.admin_meta import (
     build_snapshot,
     create_backup,
@@ -62,13 +63,9 @@ def _settings(context: Any):
 
 def _role(context: Any, user_id: int | None = None) -> str | None:
     user_id = user_id if user_id is not None else int(context._user_id) if getattr(context, "_user_id", None) else None
-    settings = _settings(context)
     if user_id is None:
         return None
-    access = getattr(settings, "admin_access", None)
-    if access is not None:
-        return access.role_for(user_id)
-    return "owner" if is_admin(user_id, settings.admin_user_ids) else None
+    return effective_role(context, user_id)
 
 
 def _is_admin(update: Any, context: Any) -> bool:
