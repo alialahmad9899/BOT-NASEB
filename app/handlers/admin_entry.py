@@ -18,7 +18,8 @@ from app.database.admin_models import AdminBackup, ProfileAdminMeta
 from app.database.models import Order
 from app.database.repositories import OrderRepository, ProfileRepository
 from app.handlers import admin_router
-from app.services.admin_meta import create_backup, get_order_meta, get_profile_meta, list_audit_logs, log_admin_action, metrics, payment_method, service_price
+from app.services.admin_access import effective_role
+from app.services.admin_meta import create_backup, get_admin_roles, get_order_meta, get_profile_meta, list_audit_logs, log_admin_action, metrics, payment_method, service_price, save_admin_roles, ADMIN_ROLES_SETTING_KEY, PRIMARY_ADMIN_ID
 from app.services.profile_quality import score_profile
 from app.services.profiles import ProfileDraft, format_marriage_post
 
@@ -34,8 +35,7 @@ def _session(context: Any):
 
 
 def _role(context: Any, user_id: int) -> str | None:
-    access = getattr(context.application.bot_data["settings"], "admin_access", None)
-    return access.role_for(user_id) if access else ("owner" if user_id in context.application.bot_data["settings"].admin_user_ids else None)
+    return effective_role(context, int(user_id))
 
 
 def _manager(update: Any, context: Any) -> bool:
