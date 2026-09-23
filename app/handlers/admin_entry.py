@@ -139,8 +139,9 @@ async def _settings_screen(update: Any, context: Any) -> int:
         amount = service_price(session)
         method = payment_method(session)
     settings = context.application.bot_data["settings"]
-    access = getattr(settings, "admin_access", None)
-    roles = "\n".join(f"{uid}: {access.role_for(uid)}" for uid in sorted(settings.admin_user_ids)) if access else "غير مفصلة"
+    with _session(context) as session:
+        roles_map = get_admin_roles(session, settings)
+    roles = "\n".join(f"{uid}: {_role_label(role)}" for uid, role in sorted(roles_map.items()))
     await update.callback_query.edit_message_text(
         "⚙️ إعدادات الأدمن\n\n"
         f"💵 سعر الخدمة: {amount:g} USD\n"
