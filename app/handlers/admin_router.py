@@ -156,7 +156,8 @@ async def _settings_subsection(update: Any, context: Any, name: str) -> int:
         role_buttons = []
         if _owner(update, context):
             role_buttons.append([InlineKeyboardButton("➕ إضافة أدمن", callback_data="admin:v2:roles:add")])
-            role_buttons.append([InlineKeyboardButton("🗑️ إزالة صلاحية أدمن", callback_data="admin:v2:roles:remove")])
+            role_buttons.append([InlineKeyboardButton("🗑️ إزالة صلاحية أدمن", callback_data="admin:v2:roles:manage")])
+            role_buttons.append([InlineKeyboardButton("📢 إشعار للموظفين", callback_data="admin:v2:roles:notify")])
         keyboard = _section("الأدمن والصلاحيات", role_buttons)
         text = "👑 الأدمن والصلاحيات\n\n" + ("\n".join(lines) if lines else "لا يوجد أدمنات.")
     elif name == "ai":
