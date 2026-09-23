@@ -43,3 +43,25 @@ def build_admin_access(legacy_raw: str, owner_raw: str, manager_raw: str, viewer
     manager = frozenset(parse_admin_user_ids(manager_raw))
     viewer = frozenset(parse_admin_user_ids(viewer_raw))
     return AdminAccess(owner, manager, viewer, legacy)
+
+
+def effective_role(context, user_id: int) -> str | None:
+    from app.services.admin_meta import effective_admin_role
+
+    factory = context.application.bot_data.get("session_factory")
+    settings = context.application.bot_data["settings"]
+    if factory is None:
+        return None
+    with factory() as session:
+        return effective_admin_role(session, settings, user_id)
+
+
+def effective_admin_ids(context) -> frozenset[int]:
+    from app.services.admin_meta import effective_admin_ids as _effective_admin_ids
+
+    factory = context.application.bot_data.get("session_factory")
+    settings = context.application.bot_data["settings"]
+    if factory is None:
+        return settings.admin_user_ids
+    with factory() as session:
+        return _effective_admin_ids(session, settings)
