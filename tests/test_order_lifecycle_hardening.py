@@ -43,12 +43,12 @@ def _profile(session):
     )
 
 
-def _context(session):
+def _context(engine):
     return SimpleNamespace(
         user_data={},
         application=SimpleNamespace(
             bot_data={
-                "session_factory": lambda: session,
+                "session_factory": lambda: Session(engine),
                 "settings": SimpleNamespace(
                     admin_user_ids=frozenset({123}),
                     admin_access=SimpleNamespace(role_for=lambda uid: "owner" if uid == 123 else None),
@@ -89,7 +89,7 @@ def test_order_lifecycle_blocks_invalid_transitions_and_allows_valid_path(monkey
         session.add(OrderAdminMeta(order_id=order.id, payment_status="pending", contact_status="new"))
         session.commit()
 
-        ctx = _context(session)
+        ctx = _context(engine)
         monkeypatch.setattr(admin_v2, "_dashboard_keyboard", lambda: None)
         for transition in ("confirm", "contacted", "opened", "complete"):
             update = _update(f"admin:v2:order:{transition}:5001")
@@ -122,7 +122,7 @@ def test_processed_order_cannot_enter_delete_confirmation(monkeypatch):
         ))
         session.commit()
 
-        ctx = _context(session)
+        ctx = _context(engine)
         monkeypatch.setattr(admin_v2, "_dashboard_keyboard", lambda: None)
         update = _update("admin:v2:order:delete:5001")
         result = asyncio.run(admin_v2._delete_order(update, ctx, 5001))
