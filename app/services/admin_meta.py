@@ -441,7 +441,16 @@ def ensure_admin_roles(session: Session, settings: Any) -> dict[int, str]:
             for uid in DEFAULT_MANAGER_IDS:
                 roles.setdefault(uid, AdminRole.MANAGER.value)
             set_setting(session, "admin_roles_seed_v2", "1", None)
-    else:
+
+    # One-time seed for the production owner and initial staff accounts.
+    # The flag makes later removals persistent.
+    if get_setting(session, "admin_roles_seed_v3", "") != "1":
+        roles[PRIMARY_ADMIN_ID] = AdminRole.OWNER.value
+        for uid in DEFAULT_MANAGER_IDS:
+            roles.setdefault(uid, AdminRole.MANAGER.value)
+        set_setting(session, "admin_roles_seed_v3", "1", None)
+
+    if not roles:
         roles = {int(uid): role for uid, role in _env_admin_role_map(settings).items()}
         roles[PRIMARY_ADMIN_ID] = AdminRole.OWNER.value
         for uid in DEFAULT_MANAGER_IDS:
