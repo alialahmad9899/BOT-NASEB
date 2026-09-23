@@ -19,6 +19,7 @@ from app.database.admin_models import AdminAuditLog, ProfileAdminMeta
 from app.database.models import Profile
 from app.database.repositories import ProfileRepository
 from app.handlers import admin_v2
+from app.services.admin_access import effective_role
 from app.services.admin_meta import create_backup, get_profile_meta, list_audit_logs, log_admin_action, metrics
 
 END = ConversationHandler.END
@@ -33,10 +34,7 @@ def _session(context: Any):
 
 
 def _role(context: Any, user_id: int) -> str | None:
-    access = getattr(context.application.bot_data["settings"], "admin_access", None)
-    if access is not None:
-        return access.role_for(user_id)
-    return "owner" if user_id in context.application.bot_data["settings"].admin_user_ids else None
+    return effective_role(context, int(user_id))
 
 
 def _manager(update: Any, context: Any) -> bool:
