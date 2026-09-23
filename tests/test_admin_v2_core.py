@@ -229,3 +229,57 @@ def test_staff_removal_is_persistent_and_primary_owner_is_pinned():
         assert 1923538306 not in saved
         assert saved[7824433847] == "manager"
         assert saved[PRIMARY_ADMIN_ID] == "owner"
+
+
+def test_staff_broadcast_targets_managers_and_confirms_primary_owner():
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    from app.handlers.admin_entry import _send_staff_notification
+
+    engine = _db()
+    settings = SimpleNamespace(
+        admin_user_ids=frozenset({1898025825, 1923538306, 7824433847}),
+        admin_access=SimpleNamespace(
+            owner_ids=frozenset({1898025825}),
+            manager_ids=frozenset({1923538306, 7824433847}),
+            viewer_ids=frozenset({555555555}),
+            legacy_ids=frozenset(),
+        ),
+    )
+    sent = []
+
+    async def fake_send_message(chat_id, text):
+        sent.append((chat_id, text))
+
+    async def fake_reply_text(text, **kwargs):
+        return None
+
+    context = SimpleNamespace(
+        user_data={"v2_flow": "admin_staff_notify"},
+        application=SimpleNamespace(
+            bot_data={"session_factory": lambda: Session(engine), "settings": settings},
+            bot=SimpleNamespace(send_message=fake_send_message),
+        ),
+    )
+    update = SimpleNamespace(
+        effective_user=SimpleNamespace(id=1898025825),
+        effective_message=SimpleNamespace(reply_text=fake_reply_text, text=""),
+    )
+
+    class DirectSessionFactory:
+        def __call__(self):
+            return Session(engine)
+
+    context.application.bot_data["session_factory"] = DirectSessionFactory()
+
+    asyncio.run(_send_staff_notification(update, context, "اجتماع اليوم الساعة 6"))
+
+    ids = [chat_id for chat_id, _ in sent]
+    assert 1923538306 in ids
+    assert 7824433847 in ids
+    assert 555555555 not in ids
+    assert 1898025825 in ids  # dedicated owner delivery report
+    owner_messages = [text for chat_id, text in sent if chat_id == 1898025825]
+    assert any("تأكيد إرسال إشعار الموظفين" in text for text in owner_messages)
