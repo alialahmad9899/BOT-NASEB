@@ -68,12 +68,19 @@ class Settings:
             os.getenv("ADMIN_MANAGER_IDS", ""),
             os.getenv("ADMIN_VIEWER_IDS", ""),
         )
-        explicit_role_ids = set(access.owner_ids) | set(access.manager_ids) | set(access.viewer_ids)
-        all_admin_ids = frozenset(set(legacy_ids) | explicit_role_ids | {PRIMARY_ADMIN_ID} | set(DEFAULT_MANAGER_IDS))
+        owner_ids = set(access.owner_ids) | {PRIMARY_ADMIN_ID}
+        manager_ids = set(access.manager_ids) | set(DEFAULT_MANAGER_IDS)
+        viewer_ids = set(access.viewer_ids)
+        combined_access = AdminAccess(
+            frozenset(owner_ids),
+            frozenset(manager_ids),
+            frozenset(viewer_ids),
+            access.legacy_ids,
+        )
 
         return cls(
             telegram_bot_token=token,
-            admin_user_ids=all_admin_ids,
+            admin_user_ids=frozenset(legacy_ids),
             ai_api_key=os.getenv("AI_API_KEY") or None,
             ai_model=ai_model,
             database_url=os.getenv("DATABASE_URL") or None,
@@ -82,8 +89,8 @@ class Settings:
             webhook_path=webhook_path,
             port=port,
             cham_cash_account=os.getenv("CHAM_CASH_ACCOUNT", "").strip(),
-            admin_owner_ids=access.owner_ids,
-            admin_manager_ids=access.manager_ids,
-            admin_viewer_ids=access.viewer_ids,
-            admin_access=access,
+            admin_owner_ids=frozenset(owner_ids),
+            admin_manager_ids=frozenset(manager_ids),
+            admin_viewer_ids=frozenset(viewer_ids),
+            admin_access=combined_access,
         )
