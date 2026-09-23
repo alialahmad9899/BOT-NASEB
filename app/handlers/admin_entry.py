@@ -432,10 +432,6 @@ async def _start_admin_notify(update: Any, context: Any) -> int:
             [InlineKeyboardButton("⬅️ إدارة الأدمنات", callback_data="admin:v2:roles:manage")],
         ]),
     )
-            [InlineKeyboardButton("❌ إلغاء", callback_data="admin:v2:roles:manage")],
-            [InlineKeyboardButton("⬅️ إدارة الأدمنات", callback_data="admin:v2:roles:manage")],
-        ]),
-    )
     return ADMIN_V2_INPUT
 
 
