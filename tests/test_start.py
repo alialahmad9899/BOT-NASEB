@@ -83,6 +83,6 @@ def test_database_backed_employee_is_detected_as_admin_command(monkeypatch):
 
     markup = reply_text.await_args.kwargs["reply_markup"]
     assert isinstance(markup, InlineKeyboardMarkup)
-    assert "admin" not in "
-".join(button.text for row in markup.inline_keyboard for button in row).lower()
+    labels = "\n".join(button.text for row in markup.inline_keyboard for button in row)
+    assert "admin" not in labels.lower()
     assert context.user_data == {}
