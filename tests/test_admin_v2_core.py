@@ -182,6 +182,28 @@ def test_owner_can_add_and_remove_employee_and_notify_remaining_admins():
         assert context.user_data == {}
 
 
+def test_production_admin_ids_have_expected_roles():
+    from app.services.admin_meta import DEFAULT_MANAGER_IDS, PRIMARY_ADMIN_ID, ensure_admin_roles, get_admin_roles
+
+    engine = _db()
+    settings = type(
+        "Settings",
+        (),
+        {
+            "admin_user_ids": frozenset({PRIMARY_ADMIN_ID, *DEFAULT_MANAGER_IDS}),
+            "admin_access": None,
+        },
+    )()
+    with Session(engine) as session:
+        ensure_admin_roles(session, settings)
+        roles = get_admin_roles(session, settings)
+        assert PRIMARY_ADMIN_ID == 1898025825
+        assert DEFAULT_MANAGER_IDS == frozenset({1923538306, 7824433847})
+        assert roles[1898025825] == "owner"
+        assert roles[1923538306] == "manager"
+        assert roles[7824433847] == "manager"
+
+
 def test_primary_admin_and_initial_staff_roles_are_seeded():
     from app.services.admin_meta import ensure_admin_roles, PRIMARY_ADMIN_ID, DEFAULT_MANAGER_IDS, get_admin_roles
 
@@ -333,7 +355,7 @@ def test_staff_notification_delivers_to_all_other_admins_and_pushes_owner_confir
         text for chat_id, text in sent
         if chat_id in {1923538306, 7824433847, 987654321}
     ]
-    assert len(employee_messages) == 3
+    assert len(admin_messages) == 3
     assert all("اجتماع الموظفين اليوم الساعة 6" in text for text in admin_messages)
 
     owner_messages = [text for chat_id, text in sent if chat_id == 1898025825]
