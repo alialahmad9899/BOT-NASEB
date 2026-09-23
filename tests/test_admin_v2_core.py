@@ -162,8 +162,10 @@ def test_owner_can_add_and_remove_employee_and_notify_remaining_admins():
                 callback_query=SimpleNamespace(answer=AsyncMock(), edit_message_text=AsyncMock()),
             )
 
-        added = update()
-        asyncio.run(admin_v2._admin_role_add_execute(added, context, "1923538306"))
+        from unittest.mock import patch
+        with patch.object(admin_v2, "_require_role", return_value=True), patch.object(admin_v2, "_role", return_value="owner"):
+            added = update()
+            asyncio.run(admin_v2._admin_role_add_execute(added, context, "1923538306"))
         from app.services.admin_meta import get_admin_roles
         with Session(engine) as check:
             roles = get_admin_roles(check, Settings())
@@ -171,8 +173,9 @@ def test_owner_can_add_and_remove_employee_and_notify_remaining_admins():
         assert bot.send_message.await_count == 1
         bot.send_message.reset_mock()
 
-        removed = update()
-        asyncio.run(admin_v2._admin_role_remove_execute(removed, context, "1923538306"))
+        with patch.object(admin_v2, "_require_role", return_value=True), patch.object(admin_v2, "_role", return_value="owner"):
+            removed = update()
+            asyncio.run(admin_v2._admin_role_remove_execute(removed, context, "1923538306"))
         with Session(engine) as check:
             roles = get_admin_roles(check, Settings())
         assert 1923538306 not in roles
