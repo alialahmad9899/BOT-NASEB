@@ -475,7 +475,8 @@ def get_admin_roles(session: Session, settings: Any | None = None) -> dict[int, 
                     return roles
         except (TypeError, ValueError, json.JSONDecodeError):
             pass
-    return _env_admin_role_map(settings) if settings is not None else {PRIMARY_ADMIN_ID: AdminRole.OWNER.value}
+    fallback = _env_admin_role_map(settings) if settings is not None else {str(PRIMARY_ADMIN_ID): AdminRole.OWNER.value}
+    return {int(uid): role for uid, role in fallback.items()}
 
 
 def save_admin_roles(session: Session, roles: dict[int, str], admin_user_id: int) -> None:
