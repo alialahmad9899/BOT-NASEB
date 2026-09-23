@@ -91,10 +91,12 @@ def test_order_lifecycle_blocks_invalid_transitions_and_allows_valid_path(monkey
 
         ctx = _context(engine)
         monkeypatch.setattr(admin_v2, "_dashboard_keyboard", lambda: None)
+        monkeypatch.setattr(admin_v2, "_require_role", lambda update, context, roles: True)
         for transition in ("confirm", "contacted", "opened", "complete"):
             update = _update(f"admin:v2:order:{transition}:5001")
             asyncio.run(admin_v2._order_transition(update, ctx, 5001, transition))
 
+        session.expire_all()
         saved = session.scalar(select(Order).where(Order.order_number == 5001))
         meta = session.get(OrderAdminMeta, saved.id)
         assert saved.status == "paid"
