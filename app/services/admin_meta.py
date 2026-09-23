@@ -244,10 +244,10 @@ def restore_snapshot(session: Session, snapshot_json: str) -> dict[str, int]:
     for item in profiles_data:
         profile = Profile(
             request_number=item.get("request_number"),
-            gender=item.get("gender") or "",
+            gender=item.get("gender"),
             name=item.get("name"),
             age=int(item["age"]) if item.get("age") is not None else None,
-            residence=item.get("residence") or "",
+            residence=item.get("residence"),
             marital_status=item.get("marital_status"),
             children_count=item.get("children_count"),
             occupation=item.get("occupation"),
