@@ -424,13 +424,14 @@ async def _start_admin_notify(update: Any, context: Any) -> int:
         return END
     context.user_data["v2_flow"] = "admin_staff_notify"
     await update.callback_query.edit_message_text(
-        "📢 إشعار للموظفين
-
-"
-        "اكتب نص الرسالة اللي بدك توصل للموظفين.
-"
+        "📢 إشعار للموظفين\n\n"
+        "اكتب نص الرسالة اللي بدك توصل للموظفين.\n"
         "رح تنبعت لكل حسابات الموظفين المسجلين كـ«موظف».",
         reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("❌ إلغاء", callback_data="admin:v2:roles:manage")],
+            [InlineKeyboardButton("⬅️ إدارة الأدمنات", callback_data="admin:v2:roles:manage")],
+        ]),
+    )
             [InlineKeyboardButton("❌ إلغاء", callback_data="admin:v2:roles:manage")],
             [InlineKeyboardButton("⬅️ إدارة الأدمنات", callback_data="admin:v2:roles:manage")],
         ]),
