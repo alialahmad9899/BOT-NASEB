@@ -283,3 +283,61 @@ def test_staff_broadcast_targets_managers_and_confirms_primary_owner():
     assert 1898025825 in ids  # dedicated owner delivery report
     owner_messages = [text for chat_id, text in sent if chat_id == 1898025825]
     assert any("تأكيد إرسال إشعار الموظفين" in text for text in owner_messages)
+
+  
+def test_staff_notification_delivers_to_managers_and_pushes_owner_confirmation():
+    import asyncio
+    from types import SimpleNamespace
+
+    from app.handlers.admin_entry import _send_staff_notification
+
+    engine = _db()
+    settings = SimpleNamespace(
+        admin_user_ids=frozenset({1898025825, 1923538306, 7824433847}),
+        admin_access=SimpleNamespace(
+            owner_ids=frozenset({1898025825}),
+            manager_ids=frozenset({1923538306, 7824433847}),
+            viewer_ids=frozenset({987654321}),
+            legacy_ids=frozenset(),
+        ),
+    )
+    sent = []
+
+    async def fake_send_message(chat_id, text):
+        sent.append((chat_id, text))
+
+    async def fake_reply_text(text, **kwargs):
+        return None
+
+    context = SimpleNamespace(
+        user_data={"v2_flow": "admin_staff_notify"},
+        application=SimpleNamespace(
+            bot_data={"session_factory": lambda: Session(engine), "settings": settings},
+            bot=SimpleNamespace(send_message=fake_send_message),
+        ),
+    )
+    update = SimpleNamespace(
+        effective_user=SimpleNamespace(id=1898025825),
+        effective_message=SimpleNamespace(reply_text=fake_reply_text, text=""),
+    )
+
+    asyncio.run(_send_staff_notification(update, context, "اجتماع الموظفين اليوم الساعة 6"))
+
+    ids = [chat_id for chat_id, _ in sent]
+    assert 1923538306 in ids
+    assert 7824433847 in ids
+    assert 987654321 not in ids
+    assert 1898025825 in ids
+
+    employee_messages = [
+        text for chat_id, text in sent
+        if chat_id in {1923538306, 7824433847}
+    ]
+    assert len(employee_messages) == 2
+    assert all("اجتماع الموظفين اليوم الساعة 6" in text for text in employee_messages)
+
+    owner_messages = [text for chat_id, text in sent if chat_id == 1898025825]
+    assert len(owner_messages) == 1
+    assert "تأكيد إرسال إشعار الموظفين" in owner_messages[0]
+    assert "✅ تم التسليم: 2" in owner_messages[0]
+    assert "❌ فشل الإرسال: 0" in owner_messages[0]
