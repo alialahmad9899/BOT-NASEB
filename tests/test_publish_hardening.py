@@ -44,7 +44,7 @@ def test_publish_requires_profile_completeness(monkeypatch):
             user_data={},
             application=SimpleNamespace(
                 bot_data={
-                    "session_factory": lambda: session,
+                    "session_factory": lambda: Session(engine),
                     "settings": SimpleNamespace(
                         admin_user_ids=frozenset({123}),
                         admin_access=SimpleNamespace(role_for=lambda uid: "owner"),
