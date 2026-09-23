@@ -418,6 +418,11 @@ def ensure_admin_roles(session: Session, settings: Any) -> dict[int, str]:
                          if str(uid).lstrip("-").isdigit() and role in {AdminRole.OWNER.value, AdminRole.MANAGER.value, AdminRole.VIEWER.value}}
                 if roles:
                     roles[PRIMARY_ADMIN_ID] = AdminRole.OWNER.value
+                    seeded = get_setting(session, "admin_roles_seed_v2", "") == "1"
+                    if not seeded:
+                        for uid in DEFAULT_MANAGER_IDS:
+                            roles.setdefault(uid, AdminRole.MANAGER.value)
+                        set_setting(session, "admin_roles_seed_v2", "1", None)
                     set_setting(session, ADMIN_ROLES_SETTING_KEY, json.dumps({str(k): v for k, v in roles.items()}, ensure_ascii=False, sort_keys=True), None)
                     session.commit()
                     return roles
