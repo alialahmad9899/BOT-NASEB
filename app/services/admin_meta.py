@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.database.admin_models import AdminAuditLog, AdminBackup, AdminSetting, OrderAdminMeta, ProfileAdminMeta
 from app.database.models import Order, Profile, ProfileContact
+from app.services.admin_access import AdminAccess, AdminRole
 
 
 def utc_now() -> datetime:
@@ -381,3 +382,105 @@ def metrics(session: Session, now: datetime | None = None) -> dict[str, Any]:
     conversion = round((completed / paid) * 100, 1) if paid else 0.0
 
     return {"profiles": profile_counts, "orders": {"pending": pending, "paid": paid, "rejected": rejected, "today": today_orders, "week": week_orders, "month": month_orders, "contacted": contacted, "completed": completed, "conversion": conversion}, "top_residences": top_residences(session)}
+
+
+ADMIN_ROLES_SETTING_KEY = "admin_roles_v1"
+PRIMARY_ADMIN_ID = 1898025825
+
+
+def _env_admin_role_map(settings: Any) -> dict[str, str]:
+    access = getattr(settings, "admin_access", None)
+    if access is None:
+        return {str(uid): AdminRole.OWNER.value for uid in sorted(getattr(settings, "admin_user_ids", ()))}
+    roles: dict[str, str] = {}
+    for uid in access.owner_ids:
+        roles[str(uid)] = AdminRole.OWNER.value
+    for uid in access.manager_ids:
+        roles[str(uid)] = AdminRole.MANAGER.value
+    for uid in access.viewer_ids:
+        roles[str(uid)] = AdminRole.VIEWER.value
+    for uid in access.legacy_ids:
+        roles.setdefault(str(uid), AdminRole.OWNER.value)
+    roles.setdefault(str(PRIMARY_ADMIN_ID), AdminRole.OWNER.value)
+    return roles
+
+
+def ensure_admin_roles(session: Session, settings: Any) -> dict[int, str]:
+    raw = get_setting(session, ADMIN_ROLES_SETTING_KEY, "")
+    if raw.strip():
+        try:
+            decoded = json.loads(raw)
+            if isinstance(decoded, dict):
+                roles = {int(uid): str(role) for uid, role in decoded.items()
+                         if str(uid).lstrip("-").isdigit() and role in {AdminRole.OWNER.value, AdminRole.MANAGER.value, AdminRole.VIEWER.value}}
+                if roles:
+                    roles[PRIMARY_ADMIN_ID] = AdminRole.OWNER.value
+                    set_setting(session, ADMIN_ROLES_SETTING_KEY, json.dumps({str(k): v for k, v in roles.items()}, ensure_ascii=False, sort_keys=True), None)
+                    session.commit()
+                    return roles
+        except (TypeError, ValueError, json.JSONDecodeError):
+            pass
+
+    roles = _env_admin_role_map(settings)
+    roles[PRIMARY_ADMIN_ID] = AdminRole.OWNER.value
+    set_setting(
+        session,
+        ADMIN_ROLES_SETTING_KEY,
+        json.dumps(roles, ensure_ascii=False, sort_keys=True),
+        None,
+    )
+    session.commit()
+    return {int(uid): role for uid, role in roles.items()}
+
+
+def get_admin_roles(session: Session, settings: Any | None = None) -> dict[int, str]:
+    raw = get_setting(session, ADMIN_ROLES_SETTING_KEY, "")
+    if raw.strip():
+        try:
+            decoded = json.loads(raw)
+            if isinstance(decoded, dict):
+                roles = {
+                    int(uid): str(role)
+                    for uid, role in decoded.items()
+                    if str(uid).lstrip("-").isdigit()
+                    and role in {AdminRole.OWNER.value, AdminRole.MANAGER.value, AdminRole.VIEWER.value}
+                }
+                if roles:
+                    roles[PRIMARY_ADMIN_ID] = AdminRole.OWNER.value
+                    return roles
+        except (TypeError, ValueError, json.JSONDecodeError):
+            pass
+    return _env_admin_role_map(settings) if settings is not None else {PRIMARY_ADMIN_ID: AdminRole.OWNER.value}
+
+
+def save_admin_roles(session: Session, roles: dict[int, str], admin_user_id: int) -> None:
+    cleaned = {
+        int(uid): role
+        for uid, role in roles.items()
+        if role in {AdminRole.OWNER.value, AdminRole.MANAGER.value, AdminRole.VIEWER.value}
+    }
+    cleaned[PRIMARY_ADMIN_ID] = AdminRole.OWNER.value
+    set_setting(
+        session,
+        ADMIN_ROLES_SETTING_KEY,
+        json.dumps({str(k): v for k, v in cleaned.items()}, ensure_ascii=False, sort_keys=True),
+        admin_user_id,
+    )
+
+
+def admin_access_from_db(session: Session, settings: Any) -> AdminAccess:
+    roles = get_admin_roles(session, settings)
+    owner = frozenset(uid for uid, role in roles.items() if role == AdminRole.OWNER.value)
+    manager = frozenset(uid for uid, role in roles.items() if role == AdminRole.MANAGER.value)
+    viewer = frozenset(uid for uid, role in roles.items() if role == AdminRole.VIEWER.value)
+    return AdminAccess(owner, manager, viewer, frozenset())
+
+
+def effective_admin_role(session: Session, settings: Any, user_id: int) -> str | None:
+    return admin_access_from_db(session, settings).role_for(user_id)
+
+
+def effective_admin_ids(session: Session, settings: Any) -> frozenset[int]:
+    return frozenset(get_admin_roles(session, settings).keys())
+
+
