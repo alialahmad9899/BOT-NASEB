@@ -51,7 +51,8 @@ def effective_role(context, user_id: int) -> str | None:
     factory = context.application.bot_data.get("session_factory")
     settings = context.application.bot_data["settings"]
     if factory is None:
-        return None
+        access = getattr(settings, "admin_access", None)
+        return access.role_for(user_id) if access is not None else (AdminRole.OWNER.value if user_id in settings.admin_user_ids else None)
     with factory() as session:
         return effective_admin_role(session, settings, user_id)
 
@@ -62,6 +63,9 @@ def effective_admin_ids(context) -> frozenset[int]:
     factory = context.application.bot_data.get("session_factory")
     settings = context.application.bot_data["settings"]
     if factory is None:
+        access = getattr(settings, "admin_access", None)
+        if access is not None:
+            return frozenset(set(access.owner_ids) | set(access.manager_ids) | set(access.viewer_ids) | set(access.legacy_ids))
         return settings.admin_user_ids
     with factory() as session:
         return _effective_admin_ids(session, settings)
