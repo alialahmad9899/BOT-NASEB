@@ -127,3 +127,50 @@ def test_primary_and_default_staff_roles_are_seeded_once_and_removal_persists():
         persisted = get_admin_roles(session, Settings())
         assert removed not in persisted
         assert persisted[PRIMARY_ADMIN_ID] == "owner"
+
+
+def test_owner_can_add_and_remove_employee_and_notify_remaining_admins():
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from app.handlers import admin_v2
+
+    engine = _db()
+    with Session(engine) as session:
+        class Settings:
+            admin_user_ids = frozenset({123})
+            admin_access = SimpleNamespace(
+                owner_ids=frozenset({123}),
+                manager_ids=frozenset(),
+                viewer_ids=frozenset(),
+                legacy_ids=frozenset(),
+            )
+
+        bot = SimpleNamespace(send_message=AsyncMock())
+        context = SimpleNamespace(
+            user_data={},
+            application=SimpleNamespace(
+                bot_data={"session_factory": lambda: session, "settings": Settings()},
+                bot=bot,
+            ),
+        )
+
+        def update():
+            return SimpleNamespace(
+                effective_user=SimpleNamespace(id=123),
+                effective_message=SimpleNamespace(reply_text=AsyncMock()),
+                callback_query=SimpleNamespace(answer=AsyncMock(), edit_message_text=AsyncMock()),
+            )
+
+        added = update()
+        asyncio.run(admin_v2._admin_role_add_execute(added, context, "1923538306"))
+        roles = get_admin_roles(session, Settings())
+        assert roles[1923538306] == "manager"
+        assert bot.send_message.await_count == 1
+        bot.send_message.reset_mock()
+
+        removed = update()
+        asyncio.run(admin_v2._admin_role_remove_execute(removed, context, "1923538306"))
+        roles = get_admin_roles(session, Settings())
+        assert 1923538306 not in roles
+        assert context.user_data == {}
