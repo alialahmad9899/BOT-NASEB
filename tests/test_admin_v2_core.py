@@ -102,3 +102,28 @@ def test_duplicate_detection_finds_matching_contact():
         matches = find_profile_duplicates(session, _draft(name="آية أحمد", phone="0933111111"))
         assert matches
         assert matches[0].score >= 100
+
+
+def test_primary_and_default_staff_roles_are_seeded_once_and_removal_persists():
+    from app.services.admin_meta import ensure_admin_roles, get_admin_roles, save_admin_roles, PRIMARY_ADMIN_ID, DEFAULT_MANAGER_IDS
+
+    engine = _db()
+    class Settings:
+        admin_access = None
+        admin_user_ids = frozenset({PRIMARY_ADMIN_ID})
+
+    with Session(engine) as session:
+        roles = ensure_admin_roles(session, Settings())
+        assert roles[PRIMARY_ADMIN_ID] == "owner"
+        assert all(roles[uid] == "manager" for uid in DEFAULT_MANAGER_IDS)
+
+        roles = get_admin_roles(session, Settings())
+        removed = next(iter(DEFAULT_MANAGER_IDS))
+        roles.pop(removed)
+        save_admin_roles(session, roles, PRIMARY_ADMIN_ID)
+        session.commit()
+
+        ensure_admin_roles(session, Settings())
+        persisted = get_admin_roles(session, Settings())
+        assert removed not in persisted
+        assert persisted[PRIMARY_ADMIN_ID] == "owner"
