@@ -63,3 +63,14 @@ def test_admin_start_command_uses_inline_keyboard_only():
     markup = reply_text.await_args.kwargs["reply_markup"]
     assert isinstance(markup, InlineKeyboardMarkup)
     assert context.user_data == {}
+
+
+def test_database_backed_employee_is_detected_as_admin(monkeypatch):
+    import app.handlers.start as start_module
+
+    class FakeContext:
+        user_data = {}
+        application = SimpleNamespace(bot_data={"settings": SimpleNamespace()})
+
+    monkeypatch.setattr(start_module, "effective_role", lambda context, user_id: "manager" if user_id == 1923538306 else None)
+    assert start_module.start_content_for_user(1923538306, {1898025825}).role == "admin"
