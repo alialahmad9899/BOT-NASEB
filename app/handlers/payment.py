@@ -8,6 +8,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ConversationHandler
 
 from app.database.repositories import OrderRepository, ProfileRepository
+from app.services.admin_access import effective_admin_ids
 from app.services.admin_meta import get_order_meta, payment_method, service_price
 from app.services.payment import normalize_whatsapp
 
@@ -208,7 +209,7 @@ async def _notify_admins(context: Any, order_number: int, profile_request: int, 
     display_name = " ".join(
         part for part in [getattr(user, "first_name", None), getattr(user, "last_name", None)] if part
     ) or "بدون اسم"
-    for admin_id in context.application.bot_data["settings"].admin_user_ids:
+    for admin_id in effective_admin_ids(context):
         try:
             await context.application.bot.send_message(
                 admin_id,
